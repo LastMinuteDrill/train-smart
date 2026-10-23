@@ -1099,6 +1099,8 @@ const S = {
   faqOpen: new Set(),
   // My record's pages (Record tools and the rest), the newest last; how many of them are in the browser's history;
   // the year its hours are shown for; whether the status report row is open; and where the overview was scrolled
+  // The training a certificate is being read for, when the reader was opened from its details
+  certFor: null,
   recStack: [], recOpeners: [], recPushed: 0, recYear: null, rsOpen: false, recScroll: 0,
   // Members' site only: { safariTab(), addToHomeScreen(), lockDevice() }
   site: null,
@@ -1834,8 +1836,11 @@ function renderDetail() {
       link && !expired ? h("a", { class: "btn primary big", href: link, target: "_blank", rel: "noopener noreferrer" }, "Open training", icoOut()) : null,
       S.uid && S.db ? (done
         ? [h("span", { class: "chip-done" }, icoCheck(), st.label), h("button", { class: "btn", type: "button", onclick: () => toggleDone(it.id, false) }, "Mark not done"),
-          p.proof ? h("button", { class: "link-btn", type: "button", "data-key": "dpv:" + it.id, onclick: () => openProof(p.proof) }, "View certificate") : null]
-        : h("button", { class: "btn big", type: "button", onclick: () => toggleDone(it.id, true) }, h("span", { class: "cb-box" }, icoCheck()), "Mark done")) : null),
+          p.proof ? h("button", { class: "link-btn", type: "button", "data-key": "dpv:" + it.id, onclick: () => openProof(p.proof) }, "View certificate")
+            : certFits(it) ? h("button", { class: "link-btn", type: "button", "data-key": "dcert:" + it.id, onclick: () => openCertReader(it.id) }, "Add the certificate") : null]
+        : [h("button", { class: "btn big", type: "button", onclick: () => toggleDone(it.id, true) }, h("span", { class: "cb-box" }, icoCheck()), "Mark done"),
+          // City-wide and SmarterU trainings: check off with the certificate's date, and keep it
+          certFits(it) ? h("button", { class: "btn big", type: "button", "data-key": "dcert:" + it.id, onclick: () => openCertReader(it.id) }, icoDoc(), "Check off with certificate") : null]) : null),
     dateEdit,
     // Other times the member took this course, from the status report; their hours count too
     Array.isArray(p.also) && p.also.length ? h("p", { class: "d-also" }, "Also completed ",
@@ -3027,22 +3032,48 @@ async function saveReportSent(date) {
 
 /* SmarterU certificates of completion (City trainings like HIPAA). The PDF reads "19-Oct-2026 <member's name> <course>";
    only the date and the course are used, matched to a training here. The name is never kept. A photo can't be read on
-   the device, so the member picks the training and date, and the photo is kept as the proof. */
-function openCertReader() {
+   the device, so the member picks the training and date, and the photo is kept as the proof. The member can also paste
+   the certificate's text, copied out of a photo with the phone's own tools (iPhone Live Text, Google Lens); it's read
+   the same way as the PDF, and the text itself isn't kept. */
+// preferId: the training whose details it was opened from, picked unless the certificate names another
+function openCertReader(preferId) {
   if (!S.uid || !S.db) return;
   regFocus = document.activeElement;
+  S.certFor = typeof preferId === "string" ? preferId : null;
   F("reg-title").textContent = "Check off from a certificate";
   certPickStep();
   openBs("reg-sheet");
 }
-function certPickStep(msg) {
+const certPrefer = () => S.certFor ? S.items.find(x => x.id === S.certFor) || null : null;
+// Trainings checked off with a certificate rather than the status report: City-wide ones, SmarterU courses, and any
+// training that asks for a certificate of completion
+const certFits = it => audOf(it) === "city" || it.certRequired === true || /smarteru\.com/i.test(it.link || "");
+function certPickStep(msg, pasted) {
   const fileIn = h("input", { type: "file", accept: "application/pdf,.pdf,image/*", hidden: true });
   fileIn.addEventListener("change", () => { const f = fileIn.files[0]; if (f) readCertificate(f); });
+  const paste = h("textarea", { rows: "5", "aria-label": "Certificate text", placeholder: "Paste the words from the certificate here." });
+  if (pasted) paste.value = pasted;
+  const forIt = certPrefer();
   F("reg-body").replaceChildren(...[
-    h("p", null, "SmarterU emails a certificate of completion for City trainings like HIPAA and cybersecurity. Choose the PDF, or a photo of it. It's read on this device and isn't uploaded."),
+    forIt ? h("p", { class: "reg-status" }, `For: ${forIt.title || "Untitled training"}`) : null,
+    h("p", null, "SmarterU emails a certificate of completion for City trainings like HIPAA and cybersecurity. Choose the PDF from that email, or a photo of the certificate. It's read on this device and isn't uploaded."),
     h("div", { class: "reg-pick" }, h("label", { class: "btn primary" }, "Choose the certificate", fileIn)),
+    h("details", { class: "reg-paste", open: pasted != null },
+      h("summary", null, "Or paste the certificate's words"),
+      h("div", { class: "reg-paste-body" },
+        h("p", null, "Only have a photo? Your phone can copy the words out of it, and Train Smart reads them like the PDF. iPhone: open the photo, press and hold the words, tap Select All, then Copy. Android: open the photo in Google Photos, tap Lens, then Text, then Select all and Copy."),
+        paste,
+        h("div", null, h("button", { class: "btn", type: "button", "data-key": "cr-read", onclick: () => readCertificateText(paste.value) }, "Read it")))),
     msg ? h("p", { class: "reg-err", role: "alert" }, msg) : h("p", { class: "reg-status", id: "reg-status", "aria-live": "polite" })].filter(Boolean));
   F("reg-foot").replaceChildren(h("span", { class: "spacer" }), h("button", { class: "btn ghost", type: "button", onclick: closeRegistry }, "Cancel"));
+}
+function readCertificateText(text) {
+  const t = String(text || "").trim();
+  if (!t) return certPickStep("Paste the certificate's words first.", "");
+  const parsed = parseSmarterU(t);
+  if (!parsed.date) return certPickStep("No completion date was found in those words. A SmarterU certificate has a date like 19-Oct-2026.", t);
+  const match = matchCertificateCourse(parsed.rest);
+  certReviewStep({ file: null, date: parsed.date, it: match || certPrefer(), rest: parsed.rest, found: !!match });
 }
 function parseSmarterU(text) {
   const t = String(text).replace(/\s+/g, " ").trim();
@@ -3064,14 +3095,16 @@ function matchCertificateCourse(rest) {
 async function readCertificate(file) {
   const status = F("reg-status");
   if (status) status.textContent = "Reading…";
-  if (/^image\//.test(file.type)) return certReviewStep({ file, photo: true, date: "", it: null, rest: "" });
+  if (/^image\//.test(file.type)) return certReviewStep({ file, photo: true, date: "", it: certPrefer(), rest: "" });
   let parsed;
   try { parsed = parseSmarterU(await pdfText(file)); }
   catch { return certPickStep("That file couldn't be read. Choose the certificate's PDF, or a photo of it."); }
   if (!parsed.date) return certPickStep("No completion date was found. Is this a SmarterU certificate of completion?");
-  certReviewStep({ file, date: parsed.date, it: matchCertificateCourse(parsed.rest), rest: parsed.rest });
+  const match = matchCertificateCourse(parsed.rest);
+  certReviewStep({ file, date: parsed.date, it: match || certPrefer(), rest: parsed.rest, found: !!match });
 }
-function certReviewStep({ file, photo, date, it, rest }) {
+// found: the certificate's own words named the training (otherwise it's the one the reader was opened from, if any)
+function certReviewStep({ file, photo, date, it, rest, found = !!it }) {
   const choices = S.items.filter(x => !expiredLabel(x) || x === it)
     .sort((a, b) => (isDone(a) - isDone(b)) || titleOf(a).localeCompare(titleOf(b)));
   const sel = h("select", { id: "cr-it" }, h("option", { value: "" }, "Pick the training"),
@@ -3089,8 +3122,10 @@ function certReviewStep({ file, photo, date, it, rest }) {
   const err = h("p", { class: "reg-err", role: "alert", hidden: true });
   const btn = h("button", { class: "btn primary", type: "button" }, "Check off");
   const label = () => {
-    const x = S.items.find(y => y.id === sel.value), p = x ? S.progress[x.id] || {} : {};
-    btn.textContent = sel.value === "__other" ? "Save to My record" : x && p.done && p.completedAt === dateIn.value ? "Keep the certificate with it" : "Check off";
+    const x = S.items.find(y => y.id === sel.value), p = x ? S.progress[x.id] || {} : {}, same = !!(x && p.done && p.completedAt === dateIn.value);
+    // Pasted words bring no file, so a training already checked off on that date has nothing to add
+    btn.textContent = sel.value === "__other" ? "Save to My record" : same ? (file ? "Keep the certificate with it" : "Already checked off that day") : "Check off";
+    btn.disabled = same && !file;
   };
   sel.addEventListener("change", () => { other.hidden = sel.value !== "__other"; label(); });
   dateIn.addEventListener("input", label);
@@ -3110,16 +3145,21 @@ function certReviewStep({ file, photo, date, it, rest }) {
   });
   label();
   F("reg-body").replaceChildren(...[
-    photo ? h("p", null, "Photos can't be read on this phone, so pick the training and the date from the photo. The photo is kept with it.")
-      : it ? h("p", { class: "reg-status" }, `Found “${it.title}”, completed ${regDate(date)}.`)
+    photo ? h("p", null, it ? "Photos can't be read on this phone, so check the training and pick the date from the photo. The photo is kept with it."
+        : "Photos can't be read on this phone, so pick the training and the date from the photo. The photo is kept with it.")
+      : it && found ? h("p", { class: "reg-status" }, `Found “${it.title}”, completed ${regDate(date)}.`)
+      : it ? h("p", { class: "reg-status" }, `Completed ${regDate(date)}. The certificate's course name didn't match a training here, so check that “${it.title}” is the right one.`)
       : h("p", { class: "reg-status" }, `Completed ${regDate(date)}. That course isn't matched to a training here, so pick it, or save it as training taken elsewhere.`),
+    // Opened from one training's details, but the certificate names another
+    found && certPrefer() && it !== certPrefer() ? h("p", null, `This certificate is for “${it.title}”, not “${certPrefer().title}”. Change the training below if that's wrong.`) : null,
     h("div", { class: "cr-form" }, h("label", { for: "cr-it" }, "Training"), sel, h("label", { for: "cr-date" }, "Completed on"), dateIn, other),
     err].filter(Boolean));
   F("reg-foot").replaceChildren(h("button", { class: "btn ghost", type: "button", onclick: () => certPickStep() }, "Back"), h("span", { class: "spacer" }), btn);
 }
 async function applyCertificate({ file, it, date, title, hours }) {
+  // Pasted words come without a file, so there's no certificate to keep
   let proof = null, lost = false;
-  try { proof = await saveProofFile(file); } catch (e) { if (e && e.tooBig) throw e; lost = true; }
+  if (file) { try { proof = await saveProofFile(file); } catch (e) { if (e && e.tooBig) throw e; lost = true; } }
   const col = S.db.collection("data/users/" + S.uid), now = new Date().toISOString();
   closeRegistry();
   if (it) {
@@ -3128,7 +3168,7 @@ async function applyCertificate({ file, it, date, title, hours }) {
     if (p.done && p.completedAt === date) await writeProgress(it.id, { proof: proof || p.proof || null });
     else await writeProgress(it.id, { done: true, completedAt: date, via: "certificate", hours: typeof p.hours === "number" ? p.hours : hoursOf(it), hoursBy: null, proof: proof || p.proof || null });
     noteBackupDue("certificate");
-    toast(lost ? "Checked off, but the certificate couldn't be kept in this browser." : `${it.title || "Training"}: done ${regDate(date)}, with the certificate.`,
+    toast(lost ? "Checked off, but the certificate couldn't be kept in this browser." : `${it.title || "Training"}: done ${regDate(date)}${proof ? ", with the certificate" : ""}.`,
       { label: "Undo", fn: () => queueProgress(it.id, () => prev).catch(() => {}) });
     return;
   }
