@@ -3899,23 +3899,59 @@ async function proofOp(mode, fn) {
 }
 const proofGet = id => proofOp("readonly", st => st.get(id));
 const proofDel = id => proofOp("readwrite", st => st.delete(id)).catch(() => {});
-// Phone photos are shrunk to a sharp but small JPEG, so a few dozen certificates fit easily
+// Phone photos are shrunk to a sharp but small JPEG (1800 px on the long side), so a few dozen certificates fit easily.
+// Some phones take 50- to 200-megapixel photos; opening one at full size can take hundreds of megabytes and crash a
+// phone's browser. So the photo is drawn straight onto a small canvas from an <img>, which lets the browser decode it at
+// the small size (and turns it upright from the camera's orientation), instead of opening it at full size first.
+const PHOTO_MAX = 1800;
+function loadImage(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.decoding = "async";
+    img.onload = () => { URL.revokeObjectURL(url); img.naturalWidth && img.naturalHeight ? res(img) : rej(new Error("no size")); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("not an image")); };
+    img.src = url;
+  });
+}
 async function shrinkImage(file) {
-  if (!/^image\//.test(file.type) || file.type === "image/svg+xml" || !window.createImageBitmap) return file;
+  if (!/^image\//.test(file.type) || file.type === "image/svg+xml") return file;
+  const toJpeg = c => new Promise(r => c.toBlob(r, "image/jpeg", 0.82));
+  const fit = (w, h) => { const s = Math.min(1, PHOTO_MAX / Math.max(w, h)); return [Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s)), s]; };
   try {
-    const bmp = await createImageBitmap(file);
-    const scale = Math.min(1, 1800 / Math.max(bmp.width, bmp.height));
-    if (scale === 1 && file.size < 700000) return file;
+    const img = await loadImage(file);
+    const [w, h, s] = fit(img.naturalWidth, img.naturalHeight);
+    if (s === 1 && file.size < 700000) return file;
     const c = document.createElement("canvas");
-    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
-    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
-    return (await new Promise(r => c.toBlob(r, "image/jpeg", 0.82))) || file;
-  } catch { return file; }
+    c.width = w; c.height = h;
+    c.getContext("2d").drawImage(img, 0, 0, w, h);
+    img.src = "";
+    const out = await toJpeg(c);
+    c.width = c.height = 0;
+    if (out && out.size) return out;
+  } catch {}
+  // A browser that can't draw it that way: ask for the small size straight away
+  try {
+    if (window.createImageBitmap) {
+      const probe = await loadImage(file).catch(() => null);
+      const [w, h] = probe ? fit(probe.naturalWidth, probe.naturalHeight) : [PHOTO_MAX, PHOTO_MAX];
+      const bmp = await createImageBitmap(file, probe ? { resizeWidth: w, resizeHeight: h, resizeQuality: "medium" } : undefined);
+      const c = document.createElement("canvas");
+      [c.width, c.height] = fit(bmp.width, bmp.height);
+      c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      bmp.close && bmp.close();
+      const out = await toJpeg(c);
+      if (out && out.size) return out;
+    }
+  } catch {}
+  return file;
 }
 async function saveProofFile(file) {
-  if (!/^image\//.test(file.type) && file.type !== "application/pdf") throw { tooBig: true, message: "Use a photo or a PDF." };
-  if (file.size > 15e6) throw { tooBig: true, message: "That file is too big. Use a photo or a PDF under 15 MB." };
+  const photo = /^image\//.test(file.type);
+  if (!photo && file.type !== "application/pdf") throw { tooBig: true, message: "Use a photo or a PDF." };
+  // Photos are shrunk before they're kept, so a big one is fine; a PDF is kept as it is
+  if (photo ? file.size > 100e6 : file.size > 15e6) throw { tooBig: true, message: photo ? "That photo is too big to use. Take a closer photo of just the card." : "That file is too big. Use a PDF under 15 MB." };
   const stored = await shrinkImage(file), id = "p-" + rid(), name = String(file.name || "certificate").slice(0, 120);
+  if (stored.size > 15e6) throw { tooBig: true, message: "That photo couldn't be made small enough on this phone. Take a closer photo of just the card, or a screenshot of it." };
   await proofOp("readwrite", st => st.put({ blob: stored, name, type: stored.type || file.type }, id));
   return { id, name, type: stored.type || file.type };
 }
@@ -4419,7 +4455,8 @@ async function drawPdfPages(body, bytes, token) {
   if (token !== viewerToken) return;
   body.replaceChildren();
   const width = Math.max(240, Math.min(body.clientWidth - 32, 880));
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  // Every page stays drawn while the viewer is open, so a long PDF is drawn a little less sharp to spare a phone's memory
+  const dpr = Math.min(window.devicePixelRatio || 1, pdf.numPages > 4 ? 1.5 : 2);
   for (let n = 1; n <= pdf.numPages; n++) {
     const page = await pdf.getPage(n);
     if (token !== viewerToken) return;
