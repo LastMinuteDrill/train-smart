@@ -1089,6 +1089,8 @@ const S = {
   // My record: training taken elsewhere ("x-" records), certifications ("c-" records), the targets set for each group,
   // and the add/edit sheet that's open
   extras: {}, certs: {}, targets: [], recEdit: null,
+  // In-person classes that have a class code (from a QR code at the class), by id, and whether they've loaded
+  classes: {}, classesLoaded: false,
   // Other things a member keeps for themselves ("m-…" records), like when they last sent their status report
   meta: {},
   // A backup being made ({ state: "building" }) or ready to share ({ state: "ready", file })
@@ -1490,6 +1492,7 @@ function sectionize(rows) {
 
 /* ---------- rendering ---------- */
 function renderAll() {
+  takePendingClass();
   // My record is its own page: no list filters and no details pane
   F("app").classList.toggle("record-mode", S.view === "record");
   if (S.view === "record") {
@@ -3379,7 +3382,8 @@ function toolsPage() {
       h("li", { class: "mhead" }, icoUpload(), h("span", null, h("b", { id: "tl-imp" }, "Import your training"), h("small", null, "Add courses, hours and certifications." +
         (S.site && S.site.sharesIn && S.site.sharesIn() ? " You can also share a PDF or photo to Train Smart from your email or Photos." : "")))),
       mrow(icoDoc(), "Upload EMS status report", null, openRegistry, "tl-reg"),
-      mrow(icoDoc(), "Read SmarterU certificate", null, openCertReader, "tl-cert")),
+      mrow(icoDoc(), "Read SmarterU certificate", null, openCertReader, "tl-cert"),
+      mrow(icoCap(), "Add a class", "Type the code from an in-person class", () => openClassSheet(null), "tl-class")),
     h("h2", { class: "menu-lbl", id: "tl-dev" }, "Record & devices"),
     h("ul", { class: "menu", "aria-labelledby": "tl-dev" },
       pageRow(icoDownload(), "Download backup", bs.last ? `Last backup ${regDate(localDay(bs.last))}` : "Not backed up yet", "backup"),
@@ -3464,7 +3468,7 @@ function extrasPage() {
     h("div", { class: "page-acts" }, h("button", { class: "btn primary", type: "button", "data-key": "add-x", onclick: () => openRec("training") }, icoPlus(), "Add training taken elsewhere")),
     extras.length ? h("ul", { class: "rec-list" }, extras.map(x => h("li", { class: "rec-item" },
       h("b", null, x.title),
-      h("span", { class: "rec-sub" }, [regDate(x.date), fmtHours(Number(x.hours)), HOUR_TYPES[x.type] || HOUR_TYPES.other, x.where].filter(Boolean).join(" · ")),
+      h("span", { class: "rec-sub" }, [regDate(x.date), fmtHours(Number(x.hours)), HOUR_TYPES[x.type] || HOUR_TYPES.other, x.where, x.via === "class" ? "From a class code" : ""].filter(Boolean).join(" · ")),
       repeatLine(x),
       h("span", { class: "rec-acts" },
         x.proof ? h("button", { class: "link-btn", type: "button", "data-key": "pv:" + x.id, onclick: () => openProof(x.proof) }, "View certificate") : null,
@@ -3532,8 +3536,87 @@ function openAddMenu() {
     mrow(icoUpload(), "Upload EMS status report", "Fills in EMS courses, their hours and your EMS certification", go(openRegistry), "am-reg"),
     mrow(icoDoc(), "Read SmarterU certificate", "Checks off a City training like HIPAA", go(openCertReader), "am-cert"),
     mrow(icoAward(), "Add a certification", "EMT, CPR, ACLS and others, with a photo of the card", go(() => openRec("cert")), "am-c"),
+    mrow(icoCap(), "Add a class", "Type the code from an in-person class, or scan its QR code", go(() => openClassSheet(null)), "am-class"),
     mrow(icoCap(), "Add training taken elsewhere", "Classes and courses that aren't in Train Smart", go(() => openRec("training")), "am-x")));
   openBs("menu-sheet");
+}
+
+/* Class codes: an in-person class (say, airbag training) gets a code and a QR code linking to …/#class=CODE. Scanning
+   it, or typing the code under Add to record, adds the class to the member's own record as training taken elsewhere
+   ("x-class-<class id>", via "class"). Only codes in the classes list work. It's the member's own entry: it doesn't sign
+   anyone in, and nothing is sent anywhere. The code rides after "#", so it never reaches the web server either. */
+const classFromHash = () => (location.hash.match(/^#class=([A-Za-z0-9-]{3,30})$/) || [])[1] || null;
+let pendingClass = classFromHash();
+const dropHash = () => { try { history.replaceState(history.state, "", location.pathname + location.search); } catch {} };
+if (pendingClass) dropHash();
+window.addEventListener("hashchange", () => { const c = classFromHash(); if (c) { pendingClass = c; dropHash(); renderAll(); } });
+// Opens the class once the page has the classes and the member's record
+function takePendingClass() {
+  if (!pendingClass || !S.loaded || !S.classesLoaded || !S.rolesLoaded || !S.uid || !S.db) return;
+  const code = pendingClass;
+  pendingClass = null;
+  setTimeout(() => openClassCode(code), 200);
+}
+// Codes match whatever the case, with or without the dash
+const normCode = s => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+function findClass(code) {
+  const n = normCode(code);
+  const hit = n ? Object.entries(S.classes).find(([, c]) => c && normCode(c.code) === n && parseISO(c.date)) : null;
+  return hit ? { id: hit[0], ...hit[1] } : null;
+}
+function openClassCode(code) {
+  const c = findClass(code);
+  openClassSheet(c, c ? "" : code, c ? "" : "That class code isn't in Train Smart. It may be mistyped, or from a class that was taken out.");
+}
+// The Add a class sheet: type a code, or (once found) check the class and add it
+function openClassSheet(c, typed, msg) {
+  if (!S.uid || !S.db) return;
+  F("menu-title").textContent = "Add a class";
+  let first = null;
+  if (c) {
+    const have = S.extras["x-class-" + c.id];
+    first = have ? h("button", { class: "btn", type: "button", "data-key": "cls-see", onclick: () => { closeBs("menu-sheet"); setView("record"); recGo("extras"); } }, "See it in my record")
+      : h("button", { class: "btn primary", type: "button", "data-key": "cls-add", onclick: () => addClass(c) }, icoPlus(), "Add to my record");
+    F("menu-body").replaceChildren(...[
+      h("section", { class: "rec-card", "aria-labelledby": "cls-title" },
+        h("h2", { id: "cls-title" }, c.title),
+        h("p", { class: "rec-muted" }, [regDate(c.date), fmtHours(Number(c.hours)) || "0 hours", HOUR_TYPES[c.type] || HOUR_TYPES.other, c.where].filter(Boolean).join(" · ")),
+        c.note ? h("p", null, c.note) : null),
+      h("p", null, have ? "This class is already in your record, under Training taken elsewhere."
+        : "This adds the class to your own record, under Training taken elsewhere, and its hours to your totals. It doesn't sign you in for the class; sign in the way your instructor asks."),
+      // A scanned code opens in Safari on iPhone, which keeps a separate record from the home screen app
+      S.site && S.site.safariTab && S.site.safariTab() ? h("p", { class: "rec-warn" }, `Use Train Smart from your home screen? Add it there instead: My record, Add to record, Add a class, then type ${c.code}.`) : null,
+      h("div", { class: "rec-head" }, first)].filter(Boolean));
+  } else {
+    const input = h("input", { id: "cls-code", class: "rec-name", type: "text", autocapitalize: "characters", autocomplete: "off", spellcheck: "false", maxlength: "30",
+      value: typed || "", placeholder: "e.g. ABC-1234", "aria-describedby": msg ? "cls-err" : null });
+    const find = () => {
+      const v = input.value.trim(), hit = findClass(v);
+      if (hit) openClassSheet(hit);
+      else openClassSheet(null, v, v ? "No class has that code. Check it with your instructor." : "Type the code printed under the class's QR code.");
+    };
+    input.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); find(); } });
+    first = input;
+    F("menu-body").replaceChildren(...[
+      h("p", null, "At an in-person class, your instructor may show a QR code. Scan it with your phone's camera, or type the code printed under it here."),
+      h("div", { class: "rec-name-row" }, h("label", { for: "cls-code" }, "Class code"), input),
+      msg ? h("p", { class: "form-err", id: "cls-err", role: "alert" }, msg) : null,
+      h("div", { class: "rec-head" }, h("button", { class: "btn primary", type: "button", "data-key": "cls-find", onclick: find }, "Find the class"))].filter(Boolean));
+  }
+  if (F("menu-sheet").hidden) openBs("menu-sheet");
+  if (first) first.focus();
+}
+async function addClass(c) {
+  const id = "x-class-" + c.id, now = new Date().toISOString();
+  const doc = Object.fromEntries(Object.entries({ kind: "training", title: String(c.title).slice(0, 200), date: c.date, hours: round2(Number(c.hours) || 0),
+    type: HOUR_TYPES[c.type] ? c.type : "other", where: c.where ? String(c.where).slice(0, 120) : null, via: "class", classCode: String(c.code).slice(0, 30),
+    addedAt: now, updatedAt: now }).filter(([, v]) => v != null && v !== ""));
+  try {
+    await retry(() => S.db.collection("data/users/" + S.uid).doc(id).set(doc));
+    closeBs("menu-sheet");
+    noteBackupDue("class");
+    toast(`Added “${c.title}” to your record.`, { label: "Undo", fn: () => S.db.collection("data/users/" + S.uid).doc(id).delete().then(() => toast("Undone.")).catch(() => {}) });
+  } catch (e) { toast(errText(e, "The class wasn't added.")); }
 }
 
 /* Add or edit a certification or a training taken elsewhere */
@@ -3605,6 +3688,8 @@ async function saveRec(e) {
     if (!parseISO(date) || date > today()) return fail("Pick the date on your certificate. It can't be in the future.", "rf-date");
     if (raw === "" || !(hours > 0 && hours <= 999)) return fail("Hours should be a number, like 1 or 8.", "rf-hours");
     rec = { kind: "training", title: title.slice(0, 200), date, hours: round2(hours), type: F("rf-type").value, where: F("rf-where").value.trim().slice(0, 120) || null };
+    // A class added from its class code stays marked that way (say, after attaching a certificate photo)
+    if (z.rec && z.rec.via === "class") { rec.via = "class"; rec.classCode = z.rec.classCode || null; }
   }
   F("rec-save").disabled = true; F("rec-save").textContent = "Saving…";
   const id = z.id || (z.kind === "cert" ? "c-" : "x-") + rid(), old = z.rec || {};
@@ -3916,7 +4001,7 @@ const backupReady = () => S.backup && S.backup.state === "ready"
 // On the overview when it's time: after a status report or certificate, after 90 days, or in a Safari tab
 function backupNudge(bs) {
   const since = bs.last ? " since your last backup" : "";
-  const why = { report: `You read a status report${since}.`, certificate: `You added a certificate${since}.`,
+  const why = { report: `You read a status report${since}.`, certificate: `You added a certificate${since}.`, class: `You added a class${since}.`,
     safari: "Safari can clear a website's saved data after 7 days away.",
     old: bs.last ? "Your last backup is more than 90 days old." : "Your record is only on this phone or computer." }[bs.reason] || "";
   return h("section", { class: "rec-card rec-nudge", "aria-labelledby": "rec-z" },
@@ -3963,7 +4048,7 @@ function cleanOwnRecord(id, r) {
     ? { cpc: +v.cpc || 0, other: +v.other || 0, emsvo: +v.emsvo || 0 } : null;
   const proof = v => v && typeof v === "object" && /^p-[a-z0-9]+$/.test(String(v.id))
     ? { id: v.id, name: str(v.name, 120) || "certificate", type: str(v.type, 40) || "" } : null;
-  const via = v => ["registry", "certificate", "hand"].includes(v) ? v : null;
+  const via = v => ["registry", "certificate", "hand", "class"].includes(v) ? v : null;
   const stamp = v => typeof v === "string" && !isNaN(Date.parse(v)) ? v.slice(0, 30) : null;
   let doc;
   if (id.startsWith("x-")) {
@@ -3972,7 +4057,7 @@ function cleanOwnRecord(id, r) {
     const title = str(r.title, 200);
     if (!title || !date(r.date) || (r.via === "registry" ? notACourse(title) : r.via === "certificate" && REG_PERSONAL.test(title))) return null;
     doc = { kind: "training", title, date: r.date, hours: num(r.hours) ?? 0, hoursBy: by(r.hoursBy), type: HOUR_TYPES[r.type] ? r.type : "other",
-      where: str(r.where, 120), via: via(r.via), proof: proof(r.proof) };
+      where: str(r.where, 120), via: via(r.via), classCode: str(r.classCode, 30), proof: proof(r.proof) };
   } else if (id.startsWith("c-")) {
     const name = str(r.name, 80);
     if (!name) return null;
@@ -4387,6 +4472,8 @@ const FAQ = [
     "They stay in this browser on this device (photos are shrunk to save space). They aren't uploaded anywhere. They're included when you back up."],
   ["Can I send a certificate or my status report straight from my email?",
     "On Android, yes, once Train Smart is on your home screen: open the PDF or photo in your email, Files or Google Photos, tap Share, then Train Smart. On iPhone, save it to Files first, then use Add to record in My record and choose it. Either way it's read on your phone and isn't uploaded."],
+  ["Our instructor showed a QR code. What does it do?",
+    "It adds that class to your own record, under Training taken elsewhere, with its date and hours. You can also type the code printed under it: My record, Add to record, Add a class. It doesn't sign you in, and nothing is sent anywhere. Sign in for the class the way your instructor asks; the academy's sign-in is still the official record."],
   ["Can my officer or the training office see my record?",
     "No. Nobody sees it unless you show them. If an officer asks, make a status card (My record, Record tools): one page with your targets and when your certifications expire, without card numbers. You decide whether to share it."],
   ["Does \"I sent it\" send my status report to EMS Training?",
@@ -4592,7 +4679,7 @@ const localDownloads = {
 // Stands in for the Claude database: trainings and targets are read only from the unlocked bundle,
 // and the member's own records live in localStorage (or in memory when the browser blocks storage)
 function localStore(bundle) {
-  const fixed = { trainings: bundle.trainings || {}, targets: bundle.targets || {} };
+  const fixed = { trainings: bundle.trainings || {}, targets: bundle.targets || {}, classes: bundle.classes || {} };
   const memory = {}, listeners = [];
   const load = col => {
     try { const v = JSON.parse(localStorage.getItem("ts:mine:" + col) || "null"); if (v && typeof v === "object") return v; } catch {}
@@ -4990,6 +5077,10 @@ async function init() {
     if (S.sel && !S.items.some(x => x.id === S.sel)) { S.sel = null; S.autoSel = false; }
     renderAll();
   }, err => { S.dbErr = err.code || "unavailable"; S.loaded = true; renderAll(); });
+  db.collection("classes").onSnapshot(snap => {
+    S.classes = Object.fromEntries(snap.docs.map(d => [d.id, d.data()]));
+    S.classesLoaded = true; renderAll();
+  }, () => { S.classesLoaded = true; renderAll(); });
   db.collection("targets").onSnapshot(snap => {
     S.targets = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(validTarget);
     renderAll();
