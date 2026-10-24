@@ -3196,7 +3196,7 @@ function certWarnCard() {
 // with its details on pages: Record tools and everything reached from it
 const REC_PAGES = { tools: "Record tools", reqs: "Requirements", certs: "Certifications", extras: "Training taken elsewhere", hours: "Hours breakdown",
   backup: "Download backup", restore: "Restore from backup", pin: "App lock & PIN", career: "Career record & status card", find: "Find my certificates",
-  faq: "Questions and answers" };
+  faq: "Questions and answers", calendar: "Calendar reminders" };
 const recPage = () => S.recStack[S.recStack.length - 1] || null;
 // The year the overview and Hours breakdown show hours for (this year unless the member picks another)
 const recYear = () => S.recYear || new Date().getFullYear();
@@ -3240,7 +3240,7 @@ function recordChildren() {
   if (!S.loaded) return [0, 1].map(() => h("div", { class: "skel", "aria-hidden": "true" }));
   if (!S.uid || !S.db) return [h("div", { class: "notice" }, "Sign in to Claude to keep your training record.")];
   const pages = { tools: toolsPage, reqs: reqsPage, certs: certsPage, extras: extrasPage, hours: hoursPage, backup: () => [backupCard(backupState())],
-    restore: restorePage, pin: () => [lockCard()], career: careerPage, find: findPage, faq: () => [faqCard()] };
+    restore: restorePage, pin: () => [lockCard()], career: careerPage, find: findPage, faq: () => [faqCard()], calendar: calendarPage };
   const page = recPage();
   return [h("div", { class: "rec" }, (pages[page] || recordOverview)())];
 }
@@ -3279,6 +3279,7 @@ function recordOverview() {
     pageRow(icoDoc(), "Certifications", null, "certs", h("span", { class: "count" }, String(certs.length))),
     pageRow(icoCap(), "Training taken elsewhere", null, "extras", h("span", { class: "count" }, String(extrasList().length))),
     pageRow(icoBars(), "Hours breakdown", null, "hours"),
+    pageRow(icoClock(), "Calendar reminders", pref.get("calendarAt", null) ? `Added ${regDate(localDay(pref.get("calendarAt", null)))}` : "Put your deadlines in your phone's calendar", "calendar"),
     pageRow(icoTools(), "Record tools", "Import, backup, PIN lock and help", "tools")));
   out.push(h("button", { class: "btn primary big block", type: "button", "data-key": "add-rec", onclick: openAddMenu }, icoPlus(), "Add to record"));
   return out;
@@ -3371,7 +3372,8 @@ function reportSentRow() {
     st.missed && sent ? h("p", { class: "st-warn" }, `No send recorded for the ${regDate(st.last)} deadline.`) : null,
     h("div", { class: "rs-row" }, h("label", { for: "rs-date" }, "Sent on"), dateIn,
       h("button", { class: "btn sm", type: "button", "data-key": "rs-save", onclick: () => saveReportSent(dateIn.value) }, "Save"),
-      h("button", { class: "link-btn", type: "button", "data-key": "rs-today", onclick: () => saveReportSent(today()) }, "I sent it today"))) : null);
+      h("button", { class: "link-btn", type: "button", "data-key": "rs-today", onclick: () => saveReportSent(today()) }, "I sent it today")),
+    h("button", { class: "more-link", type: "button", "data-key": "rp:calendar", onclick: () => recGo("calendar") }, "Add the deadlines to my calendar", icoArrow())) : null);
 }
 
 /* Record tools: importing, the record on this and other devices, printing, and help */
@@ -3443,7 +3445,8 @@ function certsPage() {
           c.proof ? h("button", { class: "link-btn", type: "button", "data-key": "pv:" + c.id, onclick: () => openProof(c.proof) }, "View card") : null,
           h("button", { class: "link-btn", type: "button", "data-key": "ed:" + c.id, onclick: () => openRec("cert", c.id) }, "Edit")));
     })) : h("p", { class: "rec-muted" }, "None yet. Add your EMT card, CPR card and others, and you'll get a heads-up before one runs out. Reading your EMS Registry status report adds your EMS certification for you."),
-    h("ul", { class: "menu" }, pageRow(icoHelp(), "Find my certificates", "Where to download each kind of card", "find"))];
+    h("ul", { class: "menu" }, pageRow(icoHelp(), "Find my certificates", "Where to download each kind of card", "find"),
+      pageRow(icoClock(), "Add expirations to my calendar", "Reminders 90, 60, 30 and 7 days before", "calendar"))];
 }
 
 const extrasList = () => Object.entries(S.extras).map(([id, x]) => ({ id, ...x })).filter(x => x && x.title)
@@ -3492,6 +3495,95 @@ function hoursPage() {
       h("p", { class: "rec-muted" }, "Progress toward each requirement is under View requirements on My record.")) : null,
     h("section", { class: "rec-card", "aria-labelledby": "hr-a" }, h("h2", { id: "hr-a" }, "All time"), grid([[fmtHours(sumHours(entries)) || "0 hours", "Every hour you've recorded"]])),
     h("p", { class: "rec-muted" }, "From the trainings you've finished and the training you took elsewhere. Fix a training's hours in its details.")].filter(Boolean);
+}
+
+/* Calendar reminders: one .ics file the member opens to put their deadlines in their own phone's calendar, so it
+   reminds them even when Train Smart is closed. No server and no notifications service: the file is made here and
+   saved like a backup. It holds the status report deadlines (Jan 31 and Jul 31, every year), each certification's
+   expiration (never its number), and the due dates of the trainings in My trainings. Each event has a fixed UID, so
+   calendars that understand it update an event instead of adding it twice. */
+const CAL_KINDS = { report: true, certs: true, trainings: true };
+function calendarItems() {
+  const now = today(), out = { report: [], certs: [], trainings: [] };
+  if (emsMemberNow()) {
+    const y = Number(now.slice(0, 4));
+    for (const md of ["01-31", "07-31"]) {
+      const next = `${y}-${md}` >= now ? `${y}-${md}` : `${y + 1}-${md}`;
+      out.report.push({ uid: "status-report-" + md, date: next, yearly: true, title: "Send your status report to EMS Training",
+        note: "GM#26-001 asks for it by the end of January and July. Record the day you send it in Train Smart (My record).", alarms: [30, 7] });
+    }
+  }
+  for (const c of certList()) {
+    if (!parseISO(c.expires) || c.expires < now) continue;
+    out.certs.push({ uid: "cert-" + c.id, date: c.expires, title: `${c.name} expires`, note: "Renew it before this date, then update it in Train Smart (My record, Certifications).", alarms: [90, 60, 30, 7] });
+  }
+  for (const it of S.items) {
+    // The status report to-dos are covered by the yearly reminders above
+    if (!appliesToMe(it) || isDone(it) || expiredLabel(it) || !parseISO(it.due) || it.due < now || (it.hoursType === "none" && /status report/i.test(it.title || ""))) continue;
+    const link = safeUrl(it.link);
+    out.trainings.push({ uid: "training-" + it.id, date: it.due, title: `Due: ${it.title || "Training"}`, url: link,
+      note: [link ? `Course: ${link}` : "", "Mark it done in Train Smart when you finish."].filter(Boolean).join("\n"), alarms: [7, 1] });
+  }
+  return out;
+}
+function icsFile(items) {
+  const esc = s => String(s).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+  const day = iso => iso.replace(/-/g, "");
+  const after = iso => { const d = parseISO(iso); d.setDate(d.getDate() + 1); return day(isoOf(d)); };
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+  // Lines longer than 75 bytes are folded, as calendars expect
+  const fold = line => {
+    const out = [];
+    let cur = "", n = 0;
+    for (const ch of line) {
+      const b = new TextEncoder().encode(ch).length;
+      if (n + b > (out.length ? 74 : 75)) { out.push(cur); cur = ""; n = 0; }
+      cur += ch; n += b;
+    }
+    out.push(cur);
+    return out.join("\r\n ");
+  };
+  // An alarm at 9 in the morning, so many days before an all-day event (which starts at midnight)
+  const alarm = (days, title) => ["BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${esc(title)}`,
+    `TRIGGER:${days === 1 ? "-PT15H" : `-P${days - 1}DT15H`}`, "END:VALARM"];
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Train Smart//Reminders//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "X-WR-CALNAME:Train Smart"];
+  for (const e of items) lines.push("BEGIN:VEVENT", `UID:${e.uid}@train-smart`, `DTSTAMP:${stamp}`,
+    `DTSTART;VALUE=DATE:${day(e.date)}`, `DTEND;VALUE=DATE:${after(e.date)}`, e.yearly ? "RRULE:FREQ=YEARLY" : null,
+    `SUMMARY:${esc(e.title)}`, e.note ? `DESCRIPTION:${esc(e.note)}` : null, e.url ? `URL:${e.url}` : null, "TRANSP:TRANSPARENT",
+    ...e.alarms.flatMap(d => alarm(d, e.title)), "END:VEVENT");
+  lines.push("END:VCALENDAR");
+  return lines.filter(Boolean).map(fold).join("\r\n") + "\r\n";
+}
+async function saveCalendar() {
+  const all = calendarItems(), items = Object.keys(all).filter(k => CAL_KINDS[k]).flatMap(k => all[k]);
+  if (!items.length) return toast("There are no upcoming dates to add.");
+  if (!S.downloads) return toast("Saving a file isn't available here.");
+  const file = new File([icsFile(items)], `train-smart-reminders-${today()}.ics`, { type: "text/calendar" });
+  try {
+    await S.downloads.save({ filename: file.name, data: file });
+    pref.set("calendarAt", new Date().toISOString());
+    renderAll();
+    toast(`Saved ${items.length} ${items.length === 1 ? "date" : "dates"}. Open the file to add them to your calendar.`);
+  } catch (e) { if (!e || e.code !== "declined") toast("Saving isn't available here."); }
+}
+function calendarPage() {
+  const all = calendarItems(), last = pref.get("calendarAt", null);
+  const pick = (k, label, sub, n) => {
+    const box = h("input", { type: "checkbox", checked: CAL_KINDS[k] && n > 0, disabled: n === 0, onchange: e => { CAL_KINDS[k] = e.target.checked; } });
+    return h("label", { class: "reg-row" + (n ? "" : " is-done") }, box, h("span", null, h("b", null, label), h("span", null, sub)));
+  };
+  const when = d => d.length ? `next ${regDate(d.slice().sort((a, b) => a.date.localeCompare(b.date))[0].date)}` : "";
+  return [
+    h("p", null, "Put your deadlines in your phone's own calendar, so it reminds you even when Train Smart is closed."),
+    h("section", { class: "rec-card", "aria-label": "What to add" },
+      h("div", { class: "reg-list" },
+        emsMemberNow() ? pick("report", "Status report to EMS Training", "January 31 and July 31, every year. Reminders 30 and 7 days before.", all.report.length) : null,
+        pick("certs", `Certification expirations (${all.certs.length})`, all.certs.length ? `Reminders 90, 60, 30 and 7 days before; ${when(all.certs)}.` : "None with an expiration date coming up. Add yours under Certifications.", all.certs.length),
+        pick("trainings", `Trainings due (${all.trainings.length})`, all.trainings.length ? `The trainings in My trainings with a due date. Reminders a week and a day before; ${when(all.trainings)}.` : "None due in My trainings right now.", all.trainings.length)),
+      h("div", { class: "rec-head" }, h("button", { class: "btn primary", type: "button", "data-key": "cal-go", onclick: saveCalendar }, icoClock(), "Add to my calendar")),
+      last ? h("p", { class: "rec-muted" }, `Last added ${regDate(localDay(last))}.`) : null),
+    h("p", { class: "rec-muted" }, "This saves a calendar file. iPhone: tap Add All when your phone asks. Android: open the downloaded file and pick your calendar app. Computer: open the file, or import it into your calendar."),
+    h("p", { class: "rec-muted" }, "The dates are a snapshot. Add them again after you add a certification or new trainings come out; if your calendar shows some twice, delete the older ones. No card numbers are in the file, but if your calendar syncs to iCloud or Google, these reminders sync too.")];
 }
 
 // The career record and the status card
@@ -4472,6 +4564,8 @@ const FAQ = [
     "They stay in this browser on this device (photos are shrunk to save space). They aren't uploaded anywhere. They're included when you back up."],
   ["Can I send a certificate or my status report straight from my email?",
     "On Android, yes, once Train Smart is on your home screen: open the PDF or photo in your email, Files or Google Photos, tap Share, then Train Smart. On iPhone, save it to Files first, then use Add to record in My record and choose it. Either way it's read on your phone and isn't uploaded."],
+  ["Can Train Smart remind me before things are due?",
+    "Yes, through your phone's own calendar. In My record, open Calendar reminders and tap Add to my calendar, then add the dates when your phone asks. Your calendar then reminds you before your status report is due, before a certification expires, and before your trainings are due, even when Train Smart is closed. Add them again after your dates change."],
   ["Our instructor showed a QR code. What does it do?",
     "It adds that class to your own record, under Training taken elsewhere, with its date and hours. You can also type the code printed under it: My record, Add to record, Add a class. It doesn't sign you in, and nothing is sent anywhere. Sign in for the class the way your instructor asks; the academy's sign-in is still the official record."],
   ["Can my officer or the training office see my record?",
