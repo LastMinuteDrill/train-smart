@@ -3376,7 +3376,8 @@ function toolsPage() {
   const bs = backupState(), c = lockCfg();
   return [
     h("ul", { class: "menu", "aria-labelledby": "tl-imp" },
-      h("li", { class: "mhead" }, icoUpload(), h("span", null, h("b", { id: "tl-imp" }, "Import your training"), h("small", null, "Add courses, hours and certifications."))),
+      h("li", { class: "mhead" }, icoUpload(), h("span", null, h("b", { id: "tl-imp" }, "Import your training"), h("small", null, "Add courses, hours and certifications." +
+        (S.site && S.site.sharesIn && S.site.sharesIn() ? " You can also share a PDF or photo to Train Smart from your email or Photos." : "")))),
       mrow(icoDoc(), "Upload EMS status report", null, openRegistry, "tl-reg"),
       mrow(icoDoc(), "Read SmarterU certificate", null, openCertReader, "tl-cert")),
     h("h2", { class: "menu-lbl", id: "tl-dev" }, "Record & devices"),
@@ -4384,6 +4385,8 @@ const FAQ = [
     "It's read right here on your device and never uploaded. The PDF itself isn't kept. Train Smart saves only the course names, dates and hours, and your certification level, number and dates. Your name, address and date of birth on the report aren't saved."],
   ["Where do my certificate photos and PDFs go?",
     "They stay in this browser on this device (photos are shrunk to save space). They aren't uploaded anywhere. They're included when you back up."],
+  ["Can I send a certificate or my status report straight from my email?",
+    "On Android, yes, once Train Smart is on your home screen: open the PDF or photo in your email, Files or Google Photos, tap Share, then Train Smart. On iPhone, save it to Files first, then use Add to record in My record and choose it. Either way it's read on your phone and isn't uploaded."],
   ["Can my officer or the training office see my record?",
     "No. Nobody sees it unless you show them. If an officer asks, make a status card (My record, Record tools): one page with your targets and when your certifications expire, without card numbers. You decide whether to share it."],
   ["Does \"I sent it\" send my status report to EMS Training?",
@@ -4795,7 +4798,9 @@ function setupOpen() {
 const lockDevice = () => { forgetKeys(); location.reload(); };
 function addSiteControls() {
   S.site = { safariTab: () => isIos() && !installed() && !/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent), addToHomeScreen, lockDevice,
-    openMove, canInstall: () => !installed() && (isPhone() || !!installPrompt) };
+    openMove, canInstall: () => !installed() && (isPhone() || !!installPrompt),
+    // Android's share sheet offers Train Smart once it's on the home screen
+    sharesIn: () => isAndroid() && installed() };
   setupOpen();
   F("vhead").before(h("div", { class: "install-banner", id: "install-banner", hidden: true },
     h("img", { src: "icon-192.png", alt: "", width: "44", height: "44" }),
@@ -4807,6 +4812,64 @@ function addSiteControls() {
   refreshInstall();
   setupMove();
   takePendingMove();
+  takePendingShare();
+}
+
+// Shared from Android's share sheet: the service worker kept the PDF, photo or text on this device (in the "ts-share"
+// cache). Once the page is unlocked, it's taken out of there and opened in the reader that fits. A status report or a
+// SmarterU certificate goes straight to its reader; anything else asks what it is.
+let pendingShare = new URLSearchParams(location.search).get("share") === "1";
+if (pendingShare) { try { history.replaceState(null, "", location.pathname); } catch {} }
+async function takePendingShare() {
+  if (!pendingShare) return;
+  pendingShare = false;
+  let file = null, text = "";
+  try {
+    const box = await caches.open("ts-share");
+    const fr = await box.match("shared-file"), tr = await box.match("shared-text");
+    if (fr) { const blob = await fr.blob(); file = new File([blob], decodeURIComponent(fr.headers.get("X-Name") || "shared"), { type: blob.type || fr.headers.get("Content-Type") || "" }); }
+    if (tr) text = await tr.text();
+    await caches.delete("ts-share");
+  } catch {}
+  if (!file && !text.trim()) return toast("Nothing came through from the share. Try sharing it again.");
+  // Wait for the trainings and the member's records, and for the PIN when the lock is on
+  for (let i = 0; i < 150 && (!S.loaded || !S.rolesLoaded || pinLocked); i++) await new Promise(r => setTimeout(r, 200));
+  openShared(file, text);
+}
+async function openShared(file, text) {
+  const isPdf = !!file && (/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name));
+  const isPhoto = !!file && /^image\//.test(file.type);
+  if (file && !isPdf && !isPhoto) return toast("Train Smart can take a PDF or a photo, and that file isn't one.");
+  let words = isPhoto ? "" : text;
+  if (isPdf) { try { words = await pdfText(file); } catch { words = ""; } }
+  if (words && (parseStatusReport(words).length || parseRegistryCert(words))) {
+    openRegistry();
+    return readStatusReport(async () => words);
+  }
+  if (words && parseSmarterU(words).date) {
+    openCertReader();
+    return isPdf ? readCertificate(file) : readCertificateText(words);
+  }
+  if (!file) return toast("That isn't a status report or a SmarterU certificate, so Train Smart can't read it.");
+  askWhatShared(file, isPdf);
+}
+// A photo, or a PDF Train Smart can't read: the member says what it is, and the file goes to that place
+function askWhatShared(file, isPdf) {
+  const go = fn => () => { closeBs("menu-sheet"); fn(); };
+  const attach = kind => () => {
+    openRec(kind);
+    S.recEdit.file = file;
+    try { const dt = new DataTransfer(); dt.items.add(file); F("rf-file").files = dt.files; } catch {}
+  };
+  F("menu-title").textContent = "What did you share?";
+  F("menu-body").replaceChildren(
+    h("p", null, `“${file.name}”. Pick what it is. It stays on this device.`),
+    h("ul", { class: "menu" },
+      mrow(icoDoc(), "A SmarterU certificate", "Checks off a City training like HIPAA", go(() => { openCertReader(); readCertificate(file); }), "sh-cert"),
+      mrow(icoAward(), "A certification card", "CPR, EMT, ACLS and others", go(attach("cert")), "sh-card"),
+      mrow(icoCap(), "A certificate for training taken elsewhere", "A class or course that isn't in Train Smart", go(attach("training")), "sh-x"),
+      isPdf ? mrow(icoUpload(), "My EMS status report", "From the EMS Registry", go(() => { openRegistry(); readStatusReport(() => pdfText(file)); }), "sh-reg") : null));
+  openBs("menu-sheet");
 }
 
 // Moving progress between devices: the member's checkmarks, groups and records travel inside a link,
