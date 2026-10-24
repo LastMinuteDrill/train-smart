@@ -1352,11 +1352,15 @@ function memoDeadline(it) {
   return isMonthlyCme(it) ? `${MONTH[d.getMonth()]} ${d.getFullYear()}` : `${MONTH[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
+// Where a completion came from, strongest first: the EMS Registry (the official record), then a certificate (read here,
+// or kept with it), then the member's own checkmark. Older checkmarks don't say.
+const sourceOf = p => !p ? null : p.via === "registry" ? "registry" : p.via === "certificate" || p.proof ? "certificate" : p.via === "hand" ? "hand" : null;
 function stateOf(it) {
   const p = S.progress[it.id];
   if (p && p.done) {
     // How it was checked off: from the member's EMS Registry status report, or by the member (older checkmarks don't say)
-    const d = fmtDate(p.completedAt), via = p.via === "registry" ? " · EMS Registry" : p.via === "certificate" ? " · from certificate" : p.via === "hand" ? " · checked by you" : "";
+    const src = sourceOf(p), d = fmtDate(p.completedAt);
+    const via = src === "registry" ? (p.proof ? " · EMS Registry, certificate kept" : " · EMS Registry") : src === "certificate" ? " · from certificate" : src === "hand" ? " · checked by you" : "";
     return { key: "done", label: "Completed" + (d ? " " + d : "") + via };
   }
   const ex = expiredLabel(it);
@@ -1737,7 +1741,7 @@ function row(it, st, terms) {
 // (older checkmarks don't say)
 const SOURCE = { registry: ["EMS Registry", "src-reg"], certificate: ["Certificate", "src-cert"], hand: ["Checked by you", "src-hand"] };
 function doneRow(it, st, terms) {
-  const p = S.progress[it.id] || {}, name = it.title || "Untitled training", src = SOURCE[p.via];
+  const p = S.progress[it.id] || {}, name = it.title || "Untitled training", src = SOURCE[sourceOf(p)];
   const hrs = fmtHours(loggedHours(it)), pdfs = pdfsOf(it);
   const cb = h("button", {
     class: "cb", type: "button", role: "checkbox", "aria-checked": "true",
@@ -1751,7 +1755,8 @@ function doneRow(it, st, terms) {
       h("p", { class: "drow-meta" },
         h("span", null, p.completedAt ? "Completed " + fmtDate(p.completedAt) : "Completed"),
         hrs ? h("span", null, hrs) : null,
-        src ? h("span", { class: "src " + src[1] }, src[0] === "EMS Registry" ? icoCheck() : null, src[0]) : null),
+        src ? h("span", { class: "src " + src[1] }, src[0] === "EMS Registry" ? icoCheck() : null, src[0]) : null,
+        sourceOf(p) === "registry" && p.proof ? h("span", { class: "src src-cert" }, "Certificate") : null),
       meta ? h("p", { class: "row-meta" }, meta) : null),
     cb);
 }
@@ -3153,11 +3158,17 @@ function certReviewStep({ file, photo, date, it, rest, found = !!it }) {
     h("label", { for: "cr-hours" }, "Hours (the certificate doesn't say)"), hoursIn);
   const err = h("p", { class: "reg-err", role: "alert", hidden: true });
   const btn = h("button", { class: "btn primary", type: "button" }, "Check off");
+  // What saving will do to a training that's already checked off
+  const upNote = h("p", { class: "reg-status", role: "status", hidden: true });
   const label = () => {
     const x = S.items.find(y => y.id === sel.value), p = x ? S.progress[x.id] || {} : {}, same = !!(x && p.done && p.completedAt === dateIn.value);
+    const mine = same && sourceOf(p) !== "registry" && sourceOf(p) !== "certificate";
+    upNote.textContent = mine ? "You checked this off yourself on that day. Saving marks it as from the certificate." : x && p.done && !same ? `Checked off ${p.completedAt ? regDate(p.completedAt) : "without a date"}. Saving changes it to the certificate's date.` : "";
+    upNote.hidden = !upNote.textContent;
     // Pasted words bring no file, so a training already checked off on that date has nothing to add
-    btn.textContent = sel.value === "__other" ? "Save to My record" : same ? (file ? "Keep the certificate with it" : "Already checked off that day") : "Check off";
-    btn.disabled = same && !file;
+    btn.textContent = sel.value === "__other" ? "Save to My record" : mine ? "Mark as from the certificate" : same ? (file ? "Keep the certificate with it" : "Already checked off that day")
+      : x && p.done ? "Use the certificate's date" : "Check off";
+    btn.disabled = same && !file && !mine;
   };
   sel.addEventListener("change", () => { other.hidden = sel.value !== "__other"; label(); });
   dateIn.addEventListener("input", label);
@@ -3185,6 +3196,7 @@ function certReviewStep({ file, photo, date, it, rest, found = !!it }) {
     // Opened from one training's details, but the certificate names another
     found && certPrefer() && it !== certPrefer() ? h("p", null, `This certificate is for “${it.title}”, not “${certPrefer().title}”. Change the training below if that's wrong.`) : null,
     h("div", { class: "cr-form" }, h("label", { for: "cr-it" }, "Training"), sel, h("label", { for: "cr-date" }, "Completed on"), dateIn, other),
+    upNote,
     err].filter(Boolean));
   F("reg-foot").replaceChildren(h("button", { class: "btn ghost", type: "button", onclick: () => certPickStep() }, "Back"), h("span", { class: "spacer" }), btn);
 }
@@ -3196,11 +3208,14 @@ async function applyCertificate({ file, it, date, title, hours }) {
   closeRegistry();
   if (it) {
     const prev = S.progress[it.id] ? { ...S.progress[it.id] } : null, p = prev || {};
-    // Same date as already recorded: just keep the certificate with it; otherwise check it off with the certificate's date
-    if (p.done && p.completedAt === date) await writeProgress(it.id, { proof: proof || p.proof || null });
+    // Same date as already recorded: keep the certificate with it, and a checkmark the member made becomes "from certificate"
+    // (one from the EMS Registry stays that way); otherwise check it off with the certificate's date
+    const upgraded = p.done && p.completedAt === date && !p.proof && p.via !== "registry" && p.via !== "certificate";
+    if (p.done && p.completedAt === date) await writeProgress(it.id, { proof: proof || p.proof || null, via: p.via === "registry" ? "registry" : "certificate" });
     else await writeProgress(it.id, { done: true, completedAt: date, via: "certificate", hours: typeof p.hours === "number" ? p.hours : hoursOf(it), hoursBy: null, proof: proof || p.proof || null });
     noteBackupDue("certificate");
-    toast(lost ? "Checked off, but the certificate couldn't be kept in this browser." : `${it.title || "Training"}: done ${regDate(date)}${proof ? ", with the certificate" : ""}.`,
+    toast(lost ? "Checked off, but the certificate couldn't be kept in this browser." : upgraded ? `${it.title || "Training"}: now marked as from the certificate.`
+      : `${it.title || "Training"}: done ${regDate(date)}${proof ? ", with the certificate" : ""}.`,
       { label: "Undo", fn: () => queueProgress(it.id, () => prev).catch(() => {}) });
     return;
   }
@@ -3931,7 +3946,7 @@ function recordDoc() {
   const name = pref.get("recname", ""), year = String(new Date().getFullYear()), entries = hourEntries(), thisYear = entries.filter(e => e.date.startsWith(year));
   const certs = certList(), cy = cycleOf(emsCertRecord());
   // Every completion, including each time a course was taken again (from the status report)
-  const via = p => p.via === "registry" ? "EMS Registry" : p.via === "certificate" ? "Certificate" : p.via === "hand" ? "Member" : "";
+  const via = p => ({ registry: p.proof ? "EMS Registry + certificate" : "EMS Registry", certificate: "Certificate", hand: "Member" })[sourceOf(p)] || "";
   const done = [...S.items.filter(isDone).map(it => { const p = S.progress[it.id] || {}; return { date: p.completedAt || "", title: it.title || "Untitled training", hours: loggedHours(it), from: via(p) }; }),
     ...S.items.flatMap(it => ((S.progress[it.id] || {}).also || []).map(a => ({ date: a.date, title: `${it.title || "Untitled training"} (another completion)`, hours: Number(a.hours), from: "EMS Registry" })))]
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
