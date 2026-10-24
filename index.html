@@ -552,6 +552,7 @@ svg{flex:none}
 .rec-form input[type=file]{font-size:15px; max-width:100%}
 .rec-form .rf-proof{display:flex; flex-wrap:wrap; gap:4px 12px; align-items:center; font-size:15px}
 .rec-form .form-err{margin:0}
+.rec-form .rf-read{margin:0; padding:10px 12px; border-radius:10px; background:var(--done-bg); color:var(--ink); font-size:15px; font-weight:600}
 .cr-form{display:grid; gap:6px}
 .cr-form label{font-weight:700; font-size:15px; margin-top:6px}
 .cr-form select,.cr-form input{width:100%; box-sizing:border-box}
@@ -3636,8 +3637,7 @@ function reqsPage() {
 function certsPage() {
   const certs = certList();
   return [
-    h("div", { class: "page-acts" }, h("button", { class: "btn primary", type: "button", "data-key": "add-c", onclick: () => openRec("cert") }, icoPlus(), "Add a certification"),
-      h("button", { class: "btn", type: "button", "data-key": "read-ecard", onclick: openEcardReader }, icoDoc(), "Read AHA eCard")),
+    h("div", { class: "page-acts" }, h("button", { class: "btn primary", type: "button", "data-key": "add-c", onclick: () => openRec("cert") }, icoPlus(), "Add a certification")),
     certs.length ? h("ul", { class: "rec-list" }, certs.map(c => {
       const st = certState(c);
       return h("li", { class: "rec-item" },
@@ -3816,7 +3816,7 @@ function findPage() {
     h("section", { class: "rec-card", "aria-label": "Where to find your certificates" },
       h("ul", { class: "rec-src" },
         src("EMT, Paramedic and EMSVO: the EMS Registry", REGISTRY_URL, "Sign in, open Con-Ed, and tap Print Status Report. Reading it here fills in your courses, hours and EMS certification."),
-        src("CPR, BLS, ACLS and PALS: AHA eCards", "https://ecards.heart.org/student/myecards", "Look yours up with your name and email, or the eCard code, answer your security question, then tap View and save the PDF. Your email from eCards@heart.org links there too. Read AHA eCard, under Add to record, saves the card and its dates."),
+        src("CPR, BLS, ACLS and PALS: AHA eCards", "https://ecards.heart.org/student/myecards", "Look yours up with your name and email, or the eCard code, answer your security question, then tap View and save the PDF. Your email from eCards@heart.org links there too. Attach the PDF in Add a certification and the card and its dates fill in."),
         src("Red Cross certificates", "https://www.redcross.org/take-a-class/digital-certificate", "Search with the email you used for class, your name and class date, or the certificate ID, then download it."),
         src("PA TRAIN courses", "https://www.train.org/pa/", "Sign in, open Your Learning, and print a course certificate or your transcript."),
         src("FEMA NIMS and ICS courses", "https://training.fema.gov/is/", "Sign in to the Independent Study student portal with your FEMA SID to print certificates or your transcript."))),
@@ -3830,8 +3830,7 @@ function openAddMenu() {
   F("menu-body").replaceChildren(h("ul", { class: "menu" },
     mrow(icoUpload(), "Upload EMS status report", "Fills in EMS courses, their hours and your EMS certification", go(openRegistry), "am-reg"),
     mrow(icoDoc(), "Read SmarterU certificate", "Checks off a City training like HIPAA", go(openCertReader), "am-cert"),
-    mrow(icoAward(), "Read AHA eCard", "Saves your CPR, BLS, ACLS or PALS card and when it runs out", go(openEcardReader), "am-ecard"),
-    mrow(icoAward(), "Add a certification", "EMT, CPR, ACLS and others, with a photo of the card", go(() => openRec("cert")), "am-c"),
+    mrow(icoAward(), "Add a certification", "EMT, CPR, ACLS and others, with a photo or PDF of the card. An AHA eCard PDF fills itself in.", go(() => openRec("cert")), "am-c"),
     mrow(icoCap(), "Add a class", "Type the code from an in-person class, or scan its QR code", go(() => openClassSheet(null)), "am-class"),
     mrow(icoCap(), "Add training taken elsewhere", "Classes and courses that aren't in Train Smart", go(() => openRec("training")), "am-x")));
   openBs("menu-sheet");
@@ -3934,7 +3933,7 @@ function recFields(kind, r) {
     const z = S.recEdit, has = z.rec && z.rec.proof && !z.dropProof;
     return h("div", { class: "rf" },
       h("label", { for: "rf-file" }, has ? "Replace the photo or PDF" : "Photo or PDF of the certificate"),
-      h("input", { id: "rf-file", type: "file", accept: "image/*,application/pdf", onchange: e => { S.recEdit.file = e.target.files[0] || null; } }),
+      h("input", { id: "rf-file", type: "file", accept: "image/*,application/pdf", onchange: e => { S.recEdit.file = e.target.files[0] || null; if (kind === "cert") readCardInto(S.recEdit.file); } }),
       has ? h("p", { class: "rf-proof" }, `Attached: ${z.rec.proof.name || "certificate"}`,
         h("button", { class: "link-btn", type: "button", onclick: () => { S.recEdit.dropProof = true; F("rf-proof-slot").replaceChildren(proofRow()); } }, "Remove")) : null);
   };
@@ -3943,12 +3942,10 @@ function recFields(kind, r) {
     const known = CERT_PRESETS.includes(r.name), sel = h("select", { id: "rf-cert", onchange: e => { F("rf-other").hidden = e.target.value !== "__other"; } },
       h("option", { value: "" }, "Pick one"), CERT_PRESETS.map(n => h("option", { value: n, selected: r.name === n }, n)),
       h("option", { value: "__other", selected: !!r.name && !known }, "Something else"));
-    // A CPR, BLS, ACLS or PALS card can be read from its AHA eCard instead of typed in
+    // A CPR, BLS, ACLS or PALS card fills itself in from its AHA eCard PDF (readCardInto)
     const aha = !r.name || /CPR|BLS|ACLS|PALS|PEARS|Heartsaver/i.test(r.name);
     return [
-      aha ? h("p", { class: "hint" }, "Have the AHA eCard PDF? ",
-        h("button", { class: "link-btn", type: "button", "data-key": "rf-ecard", onclick: () => { closeBs("rec-sheet"); S.recEdit = null; openEcardReader(); } }, "Read it instead"),
-        " and the dates fill in for you.") : null,
+      aha ? h("p", { class: "hint" }, "Have the AHA eCard PDF? Attach it below and the card, its dates and the eCard code fill in.") : null,
       field("rf-cert", "Certification", sel),
       h("div", { class: "rf", id: "rf-other", hidden: !(r.name && !known) },
         h("label", { for: "rf-certname" }, "Its name"), h("input", { id: "rf-certname", type: "text", maxlength: "80", value: known ? "" : r.name || "" })),
@@ -3956,7 +3953,8 @@ function recFields(kind, r) {
       h("div", { class: "rf-row" },
         field("rf-issued", "Issued", h("input", { id: "rf-issued", type: "date", max: today(), value: r.issued || "" })),
         field("rf-expires", "Expires", h("input", { id: "rf-expires", type: "date", value: r.expires || "" }))),
-      h("div", { id: "rf-proof-slot" }, proofRow()), err];
+      h("div", { id: "rf-proof-slot" }, proofRow()),
+      h("p", { class: "rf-read", id: "rf-read", role: "status", hidden: true }), err];
   }
   return [
     field("rf-title", "Course or class", h("input", { id: "rf-title", type: "text", maxlength: "200", value: r.title || "" })),
@@ -3966,6 +3964,36 @@ function recFields(kind, r) {
     field("rf-type", "Counts toward", h("select", { id: "rf-type" }, Object.entries(HOUR_TYPES).map(([k, label]) => h("option", { value: k, selected: (r.type || "ems") === k }, label)))),
     field("rf-where", "Where you took it (optional)", h("input", { id: "rf-where", type: "text", maxlength: "120", value: r.where || "" })),
     h("div", { id: "rf-proof-slot" }, proofRow()), err];
+}
+// A certification's PDF is read as soon as it's attached: an AHA eCard fills in the card, its code and its dates
+// (parseAhaCard), and saving marks it as read from the card. Anything else is just attached, as before.
+async function readCardInto(file) {
+  const z = S.recEdit, note = F("rf-read");
+  if (z) z.read = null;
+  if (note) note.hidden = true;
+  if (!z || z.kind !== "cert" || !file || !(/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name))) return;
+  note.textContent = "Reading the PDF…"; note.hidden = false;
+  let card = null;
+  try { card = parseAhaCard(await pdfText(file)); } catch {}
+  // Closed, or another file picked, while it was reading
+  if (S.recEdit !== z || z.file !== file) return;
+  if (!card || (!card.issued && !card.expires)) { note.hidden = true; return; }
+  const expires = card.expires || (card.issued ? isoOf(new Date(+card.issued.slice(0, 4) + 2, +card.issued.slice(5, 7), 0)) : "");
+  if (card.course) {
+    const preset = CERT_PRESETS.includes(card.course);
+    F("rf-cert").value = preset ? card.course : "__other";
+    F("rf-other").hidden = preset;
+    if (!preset) F("rf-certname").value = card.course;
+  }
+  if (card.code) F("rf-num").value = card.code;
+  if (card.issued) F("rf-issued").value = card.issued;
+  if (expires) F("rf-expires").value = expires;
+  const name = card.course || "", same = !z.id && name ? sameCertAs(name) : null;
+  z.read = { name, expires };
+  note.textContent = [`Filled in from your AHA eCard${name ? `: ${name === "CPR / BLS" ? "BLS" : name}` : ""}` +
+      [card.issued ? `, issued ${regDate(card.issued)}` : "", expires ? `, good through ${regDate(expires)}` : ""].join("") + ". Check the boxes above, then Save.",
+    card.expires ? "" : "The Renew By date wasn't found, so it's set to two years after the issue date.",
+    same ? `Saving replaces the ${same.name} already in your record${same.expires ? ` (${daysUntil(same.expires) < 0 ? "expired" : "good through"} ${regDate(same.expires)})` : ""}.` : ""].filter(Boolean).join(" ");
 }
 async function saveRec(e) {
   e.preventDefault();
@@ -3983,6 +4011,8 @@ async function saveRec(e) {
     rec = { kind: "cert", name: name.slice(0, 80), number: F("rf-num").value.trim().slice(0, 40) || null, issued: issued || null, expires: expires || null };
     // Changing an EMS certification by hand means it no longer matches the status report exactly
     if (z.rec && z.rec.via === "registry" && z.rec.name === rec.name && z.rec.expires === rec.expires && (z.rec.issued || null) === rec.issued) rec.via = "registry";
+    // Read from an AHA eCard (and still saying what the card says)
+    else if (z.read && z.file && (!z.read.name || z.read.name === rec.name) && z.read.expires === rec.expires) rec.via = "certificate";
   } else {
     const title = F("rf-title").value.trim(), date = F("rf-date").value, raw = F("rf-hours").value.trim(), hours = Number(raw);
     if (!title) return fail("Type the course or class name.", "rf-title");
@@ -3993,7 +4023,10 @@ async function saveRec(e) {
     if (z.rec && z.rec.via === "class") { rec.via = "class"; rec.classCode = z.rec.classCode || null; }
   }
   F("rec-save").disabled = true; F("rec-save").textContent = "Saving…";
-  const id = z.id || (z.kind === "cert" ? "c-" : "x-") + rid(), old = z.rec || {};
+  // A new card read from its eCard renews the one of the same name already in the record (even with a date changed
+  // by hand), rather than adding a second
+  const same = !z.id && z.kind === "cert" && z.read && z.file ? sameCertAs(rec.name) : null;
+  const id = z.id || (same ? same.id : (z.kind === "cert" ? "c-" : "x-") + rid()), old = z.rec || (same ? S.certs[same.id] || {} : {});
   let proof = z.dropProof ? null : old.proof || null, proofLost = false;
   try {
     if (z.file) {
@@ -4006,7 +4039,7 @@ async function saveRec(e) {
     await retry(() => S.db.collection("data/users/" + S.uid).doc(id).set(doc));
     closeBs("rec-sheet"); S.recEdit = null;
     if (z.file || (!z.id && z.kind === "cert")) noteBackupDue("certificate");
-    toast(proofLost ? "Saved, but the photo couldn't be kept in this browser." : z.id ? "Saved." : z.kind === "cert" ? "Certification added." : "Training added.");
+    toast(proofLost ? "Saved, but the photo couldn't be kept in this browser." : z.id ? "Saved." : same ? `${rec.name} updated.` : z.kind === "cert" ? "Certification added." : "Training added.");
   } catch (err) {
     F("rec-save").disabled = false; F("rec-save").textContent = "Save";
     fail(errText(err, "That wasn't saved."));
@@ -4810,8 +4843,10 @@ const FAQ = [
     "They stay in this browser on this device (photos are shrunk to save space). They aren't uploaded anywhere. They're included when you back up."],
   ["Can I send a certificate or my status report straight from my email?",
     "On Android, yes, once Train Smart is on your home screen: open the PDF or photo in your email, Files or Google Photos, tap Share, then Train Smart. On iPhone, save it to Files first, then use Add to record in My record and choose it. Either way it's read on your phone and isn't uploaded."],
+  ["A course opened inside Train Smart. Can it open in Chrome or Safari?",
+    "On Android, course links open in a Chrome window on top of Train Smart, and you're signed in the same as in Chrome. To move it to a regular Chrome tab, tap ⋮ at the top right, then Open in Chrome. On iPhone, pick Open in Safari when Train Smart asks."],
   ["How do I add my CPR card?",
-    "If it's an AHA eCard (BLS, ACLS, PALS or Heartsaver): open the email from eCards@heart.org, tap the link to your eCards, tap View and save the PDF. Then My record, Add to record, Read AHA eCard. It fills in the card and the day it runs out, and keeps the PDF. Any other card: Add a certification, with a photo of it."],
+    "If it's an AHA eCard (BLS, ACLS, PALS or Heartsaver): open the email from eCards@heart.org, tap the link to your eCards, tap View and save the PDF. Then My record, Add to record, Add a certification, and attach the PDF: the card and the day it runs out fill in, and the PDF is kept. Any other card: add it the same way, with a photo of it, and type the dates."],
   ["Can Train Smart remind me before things are due?",
     "Yes, through your phone's own calendar. In My record, open Calendar reminders and tap Add to my calendar, then add the dates when your phone asks. Your calendar then reminds you before your status report is due, before a certification expires, and before your trainings are due, even when Train Smart is closed. Add them again after your dates change."],
   ["Our instructor showed a QR code. What does it do?",
@@ -5158,30 +5193,33 @@ refreshInstall();
 if ("serviceWorker" in navigator) window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
 
 // Course links in the home screen app: phones open them in a built-in browser, which may not keep the member
-// signed in to the course site. So the member picks: their own browser, the built-in one, or copying the link.
+// signed in to the course site. On iPhone the member picks: Safari, the built-in one, or copying the link. On Android
+// the built-in one is Chrome's own window (same sign-ins), so the sheet only says how to move it to a Chrome tab.
 const isAndroid = () => /Android/.test(navigator.userAgent);
 // iPhones say "OS 17_4"; iPads that ask for the desktop site say "Version/17.4" instead
 const iosVersion = () => { const m = navigator.userAgent.match(/OS (\d+)_/) || navigator.userAgent.match(/Version\/(\d+)/); return m ? +m[1] : 0; };
 const browserName = () => isIos() ? "Safari" : isAndroid() ? "Chrome" : "your browser";
-// The usual ways out of an app's built-in browser: Safari's own link prefix (iOS 17 and later), or an Android
-// intent for Chrome that falls back to the plain link when Chrome isn't there. Null when there's no way.
+// The way out of an app's built-in browser on iPhone: Safari's own link prefix (iOS 17 and later). Android has none:
+// Chrome keeps a home screen app's links in its own window over the app even when asked for Chrome by name (tried on
+// a real phone, Oct 24), so there the member moves the page to a tab from that window's ⋮ menu. Null when there's no way.
 function outsideUrl(href) {
-  const u = new URL(href);
-  if (isIos()) return iosVersion() >= 17 ? "x-safari-" + href : null;
-  if (isAndroid()) return `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=${u.protocol.slice(0, -1)};package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(href)};end`;
-  return null;
+  return isIos() && iosVersion() >= 17 ? "x-safari-" + href : null;
 }
 let openHref = "", openPending = false, openTimer = null;
 function askHowToOpen(a) {
   openHref = a.href;
   const holder = a.closest(".row, #pane-detail"), title = holder && holder.querySelector(".row-title, .d-title");
   const name = title ? title.textContent.replace(/^New: /, "").trim() : "";
-  const out = outsideUrl(openHref), b = browserName();
+  const out = outsideUrl(openHref), b = browserName(), android = isAndroid();
   F("open-title").textContent = name ? "Open the course" : "Open the website";
   F("open-name").textContent = name || new URL(openHref).host;
-  F("open-why").textContent = out ? `${b} remembers your sign-in to the course site.` : `To use ${b}, copy the link and paste it into ${b}.`;
+  F("open-why").textContent = android ? "It opens in a Chrome window on top of Train Smart, signed in the same as Chrome. To move it to a regular Chrome tab, tap ⋮ at the top right, then Open in Chrome."
+    : out ? `${b} remembers your sign-in to the course site.` : `To use ${b}, copy the link and paste it into ${b}.`;
   F("open-browser").textContent = `Open in ${b}`;
   F("open-browser").hidden = !out;
+  // Android has one way to open it, so that's the main button
+  F("open-here").textContent = android ? (name ? "Open the course" : "Open the website") : "Open here in the app";
+  F("open-here").classList.toggle("primary", android);
   F("open-err").hidden = true;
   openBs("open-sheet");
 }
@@ -5205,6 +5243,8 @@ function setupOpen() {
     if (e.defaultPrevented || e.button !== 0 || !installed() || !isPhone()) return;
     const a = e.target.closest && e.target.closest('a[target="_blank"][href^="http"]');
     if (!a || new URL(a.href).origin === location.origin) return;
+    // Android: the sheet is a one-time tip about Chrome's ⋮ menu; once a link has been opened from it, links just open
+    if (isAndroid() && pref.get("openTip", "") === "seen") return;
     e.preventDefault();
     askHowToOpen(a);
   });
@@ -5214,7 +5254,7 @@ function setupOpen() {
   });
   const close = () => { openPending = false; clearTimeout(openTimer); closeBs("open-sheet"); };
   F("open-browser").addEventListener("click", openInBrowser);
-  F("open-here").addEventListener("click", () => { const href = openHref; close(); window.open(href, "_blank", "noopener"); });
+  F("open-here").addEventListener("click", () => { const href = openHref; close(); if (isAndroid()) pref.set("openTip", "seen"); window.open(href, "_blank", "noopener"); });
   F("open-copy").addEventListener("click", () => { const href = openHref, b = browserName(); close(); copyText(href, `Link copied. Open ${b} and paste it into the address bar.`); });
   F("open-close").addEventListener("click", close);
   F("open-sheet").addEventListener("click", e => { if (e.target === e.currentTarget) close(); });
@@ -5300,8 +5340,7 @@ function askWhatShared(file, isPdf) {
     h("p", null, `“${file.name}”. Pick what it is. It stays on this device.`),
     h("ul", { class: "menu" },
       mrow(icoDoc(), "A SmarterU certificate", "Checks off a City training like HIPAA", go(() => { openCertReader(); readCertificate(file); }), "sh-cert"),
-      mrow(icoAward(), "An AHA eCard", "CPR, BLS, ACLS or PALS from the American Heart Association", go(() => { openEcardReader(); readEcard(file); }), "sh-ecard"),
-      mrow(icoAward(), "Another certification card", "EMT, Red Cross CPR and others", go(attach("cert")), "sh-card"),
+      mrow(icoAward(), "A certification card", "CPR, EMT, ACLS and others", go(attach("cert")), "sh-card"),
       mrow(icoCap(), "A certificate for training taken elsewhere", "A class or course that isn't in Train Smart", go(attach("training")), "sh-x"),
       isPdf ? mrow(icoUpload(), "My EMS status report", "From the EMS Registry", go(() => { openRegistry(); readStatusReport(() => pdfText(file)); }), "sh-reg") : null));
   openBs("menu-sheet");
