@@ -2997,8 +2997,9 @@ function gapList(t, st) {
   const all = S.gapAll.has(t.id);
   const kindName = { cpc: "Clinical Patient Care", emsvo: "EMSVO", ems: "continuing education" }[t.type] || (HOUR_TYPES[t.type] || "training").toLowerCase();
   const head = `${fmtHours(st.remaining)} of ${kindName} still needed.`;
-  if (!open.length) return h("p", { class: "tgt-gap-none" }, head, " No open trainings in Train Smart count toward this right now.");
-  return h("div", { class: "tgt-gap" },
+  const again = retakeBlock(t);
+  if (!open.length) return [h("p", { class: "tgt-gap-none" }, head, " No open trainings in Train Smart count toward this right now."), again];
+  return [h("div", { class: "tgt-gap" },
     h("p", { class: "tgt-gap-head" }, head, " These count:"),
     h("ul", null, open.slice(0, all ? open.length : 6).map(it => {
       // A course whose deadline passed but is still offered counts just the same
@@ -3011,7 +3012,35 @@ function gapList(t, st) {
     })),
     open.length > 6 ? h("button", { class: "link-btn", type: "button", "data-key": "gapall:" + t.id,
       onclick: () => { all ? S.gapAll.delete(t.id) : S.gapAll.add(t.id); renderAll(); } }, all ? "Show fewer" : `Show all ${open.length}`) : null,
-    t.type === "cpc" ? h("p", { class: "rec-muted" }, "The Registry decides each course's credit type after you finish it.") : null);
+    t.type === "cpc" ? h("p", { class: "rec-muted" }, "The Registry decides each course's credit type after you finish it.") : null), again];
+}
+// Retakes: trainings the member finished only before this registration began (so they don't count toward it) that are
+// still offered. Taking one again may count now; the member is told to check with EMS Training first.
+function retakeList(t) {
+  const cy = t.per === "cycle" ? cycleOf(emsCertRecord()) : null;
+  if (!cy) return [];
+  return S.items.filter(it => isDone(it) && !expiredLabel(it) && inMyGroups(it) && countsToward(it, t.type)).map(it => {
+    const p = S.progress[it.id] || {};
+    const dates = [p.completedAt, ...(Array.isArray(p.also) ? p.also.map(a => a && a.date) : [])].filter(d => parseISO(d)).sort();
+    return { it, last: dates[dates.length - 1] };
+  }).filter(x => x.last && x.last < cy.start).sort((a, b) => b.last.localeCompare(a.last) || titleOf(a.it).localeCompare(titleOf(b.it)));
+}
+function retakeBlock(t) {
+  const list = retakeList(t);
+  if (!list.length) return null;
+  const key = t.id + ":retake", all = S.gapAll.has(key);
+  return h("div", { class: "tgt-gap" },
+    h("p", { class: "tgt-gap-head" }, `Taken before this registration (${list.length})`),
+    h("p", { class: "rec-muted" }, "You finished these before this registration began, so they don't count toward it. Taking one again may count now. Check with EMS Training that a retake counts before you take one for credit."),
+    h("ul", null, list.slice(0, all ? list.length : 4).map(({ it, last }) => {
+      const link = safeUrl(it.link), bits = [`last taken ${regDate(last)}`, it.duration].filter(Boolean).join(" · ");
+      return h("li", null,
+        link ? h("a", { href: link, target: "_blank", rel: "noopener noreferrer", "data-key": "re:" + t.id + ":" + it.id }, it.title || "Untitled training", icoOut())
+          : h("button", { class: "link-btn", type: "button", "data-key": "re:" + t.id + ":" + it.id, onclick: () => { setView("done"); openDetail(it.id); } }, it.title || "Untitled training"),
+        h("span", null, bits));
+    })),
+    list.length > 4 ? h("button", { class: "link-btn", type: "button", "data-key": "reall:" + t.id,
+      onclick: () => { all ? S.gapAll.delete(key) : S.gapAll.add(key); renderAll(); } }, all ? "Show fewer" : `Show all ${list.length}`) : null);
 }
 
 // GM#26-001: every EMS provider sends their status report to EMS Training by the end of January and of July.
