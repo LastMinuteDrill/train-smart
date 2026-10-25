@@ -1790,18 +1790,21 @@ function row(it, st, terms) {
     h("span", { class: "badge b-" + st.key }, st.key === "late" ? icoAlert() : null, st.label),
     h("div", { class: "row-acts" }, go, mark));
 }
-// City trainings are shown done with their certificate (SmarterU emails one after the course), and the status report
-// never lists them. So Mark done on one of their cards asks how: with the certificate (its date, kept with the training)
-// or just marked done today. EMS courses come in from the status report, so theirs ticks straight away.
-const certFirst = it => audOf(it) === "city" || it.certRequired === true || /smarteru\.com/i.test(it.link || "");
+// Mark done on a card asks how, so a member can use the proof they have: the certificate (SmarterU's for City
+// trainings, PA TRAIN's for EMS courses: its date, kept with the training), the status report for EMS courses (every
+// course on it at once), or just a checkmark with today's date. Reminders (like sending the status report) have no
+// certificate, so theirs ticks straight away.
+const certFirst = it => it.hoursType !== "none";
 function askHowDone(it) {
   if (!S.uid || !S.db) return;
   const go = fn => () => { closeBs("menu-sheet"); fn(); };
+  const ems = ["ems", "emsvo"].includes(typeOfTraining(it));
   F("menu-title").textContent = "Mark done";
   F("menu-body").replaceChildren(
     h("p", { class: "reg-status" }, it.title || "Untitled training"),
     h("ul", { class: "menu" },
       mrow(icoDoc(), "Upload the certificate", "Uses its date and keeps it with the training", go(() => openCertReader(it.id)), "hd-cert"),
+      ems ? mrow(icoUpload(), "Upload status report", "Checks off every course on it at once", go(openRegistry), "hd-reg") : null,
       mrow(icoCheck(), "Just mark it done", "With today's date. You can add the certificate later.", go(() => toggleDone(it.id, true)), "hd-mark")));
   openBs("menu-sheet");
 }
@@ -3296,12 +3299,19 @@ async function readCertificate(file) {
   certReviewStep({ file, date: parsed.date, it: match || certPrefer(), rest: parsed.rest, found: !!match });
 }
 // found: the certificate's own words named the training (otherwise it's the one the reader was opened from, if any)
+// Two assignments of one course: the same Registry course number, or the same name
+const sameCourse = (a, b) => !!(a && b && a !== b && ((a.courseNo && String(a.courseNo) === String(b.courseNo)) || titleOf(a).toLowerCase() === titleOf(b).toLowerCase()));
+// Whether a training already has a completion on that date (its check-off, or another time it was taken)
+const completedOn = (it, d) => { const p = S.progress[it.id] || {}; return (p.done && p.completedAt === d) || (Array.isArray(p.also) && p.also.some(a => a.date === d)); };
 // train: what a PA TRAIN certificate says (its hours and credit type), when it's one
 function certReviewStep({ file, photo, date, it, rest, found = !!it, train = null }) {
-  const choices = S.items.filter(x => !expiredLabel(x) || x === it)
+  const choices = S.items.filter(x => !expiredLabel(x) || x === it || x === certPrefer())
     .sort((a, b) => (isDone(a) - isDone(b)) || titleOf(a).localeCompare(titleOf(b)));
+  // A course assigned more than once (Trauma Assessment for September 2025 and June 2026) shows which assignment
+  const twice = t => choices.filter(x => titleOf(x).toLowerCase() === t.toLowerCase()).length > 1;
+  const optLabel = x => (x.title || "Untitled training") + (twice(titleOf(x)) && trainingMonth(x) ? ` · ${trainingMonth(x)}` : "") + (isDone(x) ? " (done)" : "");
   const sel = h("select", { id: "cr-it" }, h("option", { value: "" }, "Pick the training"),
-    choices.map(x => h("option", { value: x.id, selected: x === it }, (x.title || "Untitled training") + (isDone(x) ? " (done)" : ""))),
+    choices.map(x => h("option", { value: x.id, selected: x === it }, optLabel(x))),
     h("option", { value: "__other" }, "It isn't in Train Smart"));
   const dateIn = h("input", { id: "cr-date", type: "date", max: today(), value: date || "" });
   // Prefill an unlisted course's name from the certificate, minus the name on the record when it's set
@@ -3335,6 +3345,9 @@ function certReviewStep({ file, photo, date, it, rest, found = !!it, train = nul
     const fail = m => { err.textContent = m; err.hidden = false; };
     if (!sel.value) return fail("Pick the training this certificate is for.");
     if (!parseISO(d) || d > today()) return fail("Pick the completion date on the certificate. It can't be in the future.");
+    // One completion counts once: the same date already saved on another assignment of the same course
+    const twin = x && S.items.find(y => y !== x && sameCourse(x, y) && completedOn(y, d));
+    if (twin) return fail(`${regDate(d)} is already saved on the ${trainingMonth(twin) || "other"} assignment, and one completion counts once. For this one, use the certificate from when you took it then.`);
     if (sel.value === "__other" && !titleIn.value.trim()) return fail("Type the course name.");
     if (sel.value === "__other" && REG_PERSONAL.test(titleIn.value)) return fail("Take out anything that isn't the course name, like an address, ZIP code or phone number.");
     const hrs = hoursIn.value.trim() === "" ? 0 : Number(hoursIn.value);
@@ -3351,8 +3364,11 @@ function certReviewStep({ file, photo, date, it, rest, found = !!it, train = nul
       : it && found ? h("p", { class: "reg-status" }, `Found “${it.title}”, completed ${regDate(date)}${certHours != null ? `, ${fmtHours(certHours) || "0 hours"}` : ""}.`)
       : it ? h("p", { class: "reg-status" }, `Completed ${regDate(date)}. The certificate's course name didn't match a training here, so check that “${it.title}” is the right one.`)
       : h("p", { class: "reg-status" }, `Completed ${regDate(date)}. That course isn't matched to a training here, so pick it, or save it as training taken elsewhere.`),
-    // Opened from one training's details, but the certificate names another
-    found && certPrefer() && it !== certPrefer() ? h("p", null, `This certificate is for “${it.title}”, not “${certPrefer().title}”. Change the training below if that's wrong.`) : null,
+    // Opened from one training's details, but the certificate names another: another course, or (by its date) another
+    // assignment of the same course
+    found && certPrefer() && it !== certPrefer() ? h("p", null, sameCourse(it, certPrefer())
+      ? `This certificate is from ${regDate(date)}, so it goes with the ${trainingMonth(it) || "other"} assignment${isDone(it) ? ", already checked off" : ""}. For ${trainingMonth(certPrefer()) || "this one"}, use the certificate from when you took it then, or mark it done with that date.`
+      : `This certificate is for “${it.title}”, not “${certPrefer().title}”. Change the training below if that's wrong.`) : null,
     h("div", { class: "cr-form" }, h("label", { for: "cr-it" }, "Training"), sel, h("label", { for: "cr-date" }, "Completed on"), dateIn, other),
     upNote,
     err].filter(Boolean));
