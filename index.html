@@ -408,6 +408,9 @@ svg{flex:none}
 .reg-paste textarea{width:100%; font:15px/1.4 var(--font); padding:10px 12px; border:1px solid var(--line-strong); border-radius:10px; background:var(--surface); color:var(--ink); resize:vertical}
 .bs-body .reg-status{color:var(--ink); font-weight:600}
 .bs-body .reg-err{color:var(--late); font-weight:600}
+.reg-groups{display:grid; gap:8px; padding:12px 14px; border:1px solid var(--line); border-radius:12px}
+.reg-groups > b{font-size:16px}
+.reg-groups > span{font-size:14px; color:var(--muted)}
 .reg-list{display:grid; gap:2px; margin:0; padding:0; list-style:none}
 .reg-row{display:grid; grid-template-columns:24px minmax(0,1fr); gap:10px; align-items:start; padding:10px 8px; border-radius:10px; cursor:pointer}
 .reg-row:hover{background:var(--sunken)}
@@ -1601,7 +1604,16 @@ function renderHead(v) {
   else slot.replaceChildren();
 }
 
+// First visit starts with the status report: reading it sets the member's groups from their certification
+// (regReviewStep), and checks off what they've done. Picking groups by hand is the other way in.
 function setupCard() {
+  if (S.setupMode !== "pick") return h("section", { class: "setup", "aria-labelledby": "setup-title" },
+    h("h2", { id: "setup-title" }, "Start with your status report"),
+    h("p", null, "Your PA EMS Registry status report shows your certification, so Train Smart can pick your groups: an EMT is in All EMS, and a paramedic is in All EMS and ALS providers. It also checks off the courses you've already done. It's read on this device and isn't uploaded."),
+    h("div", { class: "setup-actions" },
+      h("button", { class: "btn primary", type: "button", "data-key": "setup-reg", onclick: openRegistry }, icoUpload(), "Upload status report"),
+      h("button", { class: "btn", type: "button", "data-key": "setup-pick", onclick: () => { S.setupMode = "pick"; renderAll(); } }, "Pick my groups instead")),
+    h("p", { class: "hint" }, "Get it from the EMS Registry: Con-Ed, then Print Status Report. Not EMS? Pick your groups instead."));
   const chips = ROLE_CHIPS.map(g => h("button", {
     class: "chip", type: "button", "aria-pressed": String(S.setupPick.has(g)),
     onclick: e => { S.setupPick.has(g) ? S.setupPick.delete(g) : S.setupPick.add(g); e.currentTarget.setAttribute("aria-pressed", String(S.setupPick.has(g))); },
@@ -1612,7 +1624,8 @@ function setupCard() {
     h("div", { class: "chips" }, chips),
     h("div", { class: "setup-actions" },
       h("button", { class: "btn primary", type: "button", onclick: () => saveRoles(GROUPS.filter(g => S.setupPick.has(g)), S.setupPick.has("city")) }, "Save my groups"),
-      h("button", { class: "btn ghost", type: "button", onclick: () => saveRoles([], true) }, "Only City-wide")));
+      h("button", { class: "btn ghost", type: "button", onclick: () => saveRoles([], true) }, "Only City-wide")),
+    h("button", { class: "link-btn", type: "button", "data-key": "setup-back", onclick: () => { S.setupMode = "report"; renderAll(); } }, "Use my status report instead"));
 }
 
 // Overdue / To do / Complete, counted the same way as always: To do is every unfinished, unexpired training in My
@@ -2497,6 +2510,10 @@ const notACourse = title => REG_NOT_A_COURSE.test(title) || REG_PERSONAL.test(ti
 // The EMS certification printed at the top of the status report: level, issue date and expiration date
 const REG_LEVELS = [["advanced emergency medical technician", "AEMT"], ["emergency medical technician", "EMT"], ["emergency medical responder", "EMR"],
   ["paramedic", "Paramedic"], ["prehospital registered nurse", "PHRN"], ["prehospital physician extender", "PHPE"], ["prehospital emergency medical services physician", "PHP"]];
+// The groups a certification puts a member in: every EMS level is All EMS, and paramedics and the other ALS levels are
+// ALS providers too. Being an FSP, FPL or FPC isn't on the report, so the member adds that group themselves.
+const ALS_LEVELS = ["Paramedic", "PHRN", "PHPE", "PHP"];
+const groupsForCert = c => c && c.name ? ["ems", ...(ALS_LEVELS.includes(c.name) ? ["als"] : [])] : [];
 // The PA DOH report prints its header labels apart from their values ("Certification Number: Expiration Date:
 // Certification Level: 123456 M/D/YYYY Emergency Medical Technician"), and states the registration plainly on page 2:
 // "Your certification period begins with the Effective Date M/D/YYYY and ends with the Expiration Date M/D/YYYY".
@@ -2693,14 +2710,33 @@ function regReviewStep(rows, cert) {
     h("span", null, h("b", null, `Your ${cert.name} certification`),
       h("span", null, [cert.number ? `#${cert.number}` : "", cert.issued ? `Effective ${regDate(cert.issued)}` : "", `expires ${regDate(cert.expires)}`,
         had ? `replaces the ${had.name} one saved, ${had.expires ? "expiring " + regDate(had.expires) : "with no expiration"}` : "save it to My record"].filter(Boolean).join(" · "))))) : null;
+  // The member's groups, from the certification on the report: on a first visit they're set here (picked from the
+  // certification, and changeable); later, a group the certification adds that's missing is offered
+  const first = S.rolesLoaded && S.roles === null, want = groupsForCert(cert);
+  const pick = first ? new Set([...want, ...(S.city ? ["city"] : [])]) : null;
+  const missing = first ? [] : want.filter(g => !S.roles.includes(g));
+  const groupsItem = first ? h("div", { class: "reg-groups", role: "group", "aria-labelledby": "reg-groups-t" },
+    h("b", { id: "reg-groups-t" }, "Your groups"),
+    h("span", null, cert ? `Picked from your ${cert.name} certification. Tap to change. Add FSPs, FPLs & FPCs if that's you.`
+      : "Your certification isn't on this, so pick every group you're in."),
+    h("div", { class: "chips" }, ROLE_CHIPS.map(g => h("button", { class: "chip", type: "button", "data-key": "rg:" + g, "aria-pressed": String(pick.has(g)),
+      onclick: e => { pick.has(g) ? pick.delete(g) : pick.add(g); e.currentTarget.setAttribute("aria-pressed", String(pick.has(g))); } }, icoCheck(), AUD_LABEL[g])))) : null;
+  const groupBox = missing.length ? h("input", { type: "checkbox", checked: true }) : null;
+  if (groupBox) groupBox.addEventListener("change", count);
+  const groupItem = groupBox ? h("li", null, h("label", { class: "reg-row" }, groupBox,
+    h("span", null, h("b", null, `Add ${missing.map(g => AUD_LABEL[g]).join(" and ")} to your groups`),
+      h("span", null, `Your ${cert.name} certification puts you in ${missing.length === 1 ? "this group" : "these groups"}, so their trainings show in My trainings.`)))) : null;
+  const groupsToSave = () => first ? { roles: GROUPS.filter(g => pick.has(g)), city: pick.has("city") }
+    : groupBox && groupBox.checked ? { roles: GROUPS.filter(g => S.roles.includes(g) || missing.includes(g)), city: S.city } : null;
   const markBtn = h("button", { class: "btn primary", type: "button", onclick: () => applyStatusReport(boxes.filter(b => b.box.checked),
-    certBox && certBox.checked ? cert : null, extraBox && extraBox.checked ? extraNew : [], repeatBox && repeatBox.checked ? repeatNew : []) });
+    certBox && certBox.checked ? cert : null, extraBox && extraBox.checked ? extraNew : [], repeatBox && repeatBox.checked ? repeatNew : [], groupsToSave()) });
   const moreWords = n => `${n} more ${n === 1 ? "completion" : "completions"}`;
   function count() {
     const picked = boxes.filter(b => b.box.checked), withCert = !!(certBox && certBox.checked), withExtra = !!(extraBox && extraBox.checked);
     const withRepeat = !!(repeatBox && repeatBox.checked);
     const more = [withCert ? `save your ${cert.name} certification` : "", withRepeat ? `add ${moreWords(repeatNew.length)}` : "",
-      withExtra ? `save ${extraNew.length} other ${extraNew.length === 1 ? "course" : "courses"}` : ""].filter(Boolean).join(", ");
+      withExtra ? `save ${extraNew.length} other ${extraNew.length === 1 ? "course" : "courses"}` : "",
+      first || (groupBox && groupBox.checked) ? "save your groups" : ""].filter(Boolean).join(", ");
     markBtn.textContent = !picked.length && !more ? "Nothing to save" : regSaveWords(picked, "Check off", "update", "mark", "add hours to", more);
     markBtn.disabled = !picked.length && !more;
   }
@@ -2736,15 +2772,16 @@ function regReviewStep(rows, cert) {
     h("p", { class: "reg-status" }, `Found ${rows.length} ${rows.length === 1 ? "course" : "courses"} on your status report. ` +
       (matched.length ? `${matched.length} match trainings here` + (fresh ? `, ${fresh} not checked yet` : "") + (redates ? `, ${redates} checked on a different date than the Registry` : "")
         + (confirms ? `, ${confirms} checked by hand on the Registry date` : "") + "." : "None match trainings here.")),
-    todo.length || certNew || extraItem || repeatItem ? h("p", null, "Untick anything that doesn't look right, then save the rest.") : null,
-    certItem || extraItem || repeatItem ? h("ul", { class: "reg-list" }, certItem, repeatItem, extraItem) : null,
+    groupsItem,
+    todo.length || certNew || extraItem || repeatItem || groupItem ? h("p", null, "Untick anything that doesn't look right, then save the rest.") : null,
+    certItem || extraItem || repeatItem || groupItem ? h("ul", { class: "reg-list" }, certItem, groupItem, repeatItem, extraItem) : null,
     matched.length ? h("ul", { class: "reg-list" }, items) : null,
     rest.length ? h("details", { class: "reg-more" },
       h("summary", null, `Other courses on your report (${rest.length})`),
       h("ul", null, rest.map(r => { const s = spareOf(r); return h("li", null, [r.title, regDate(r.date), rowHours(r) != null ? fmtHours(rowHours(r)) || "0 hours" : "",
         s ? `another completion of ${s.it.title}` : "not in Train Smart"].filter(Boolean).join(" · ")); }))) : null].filter(Boolean));
   F("reg-foot").replaceChildren(h("button", { class: "btn ghost", type: "button", onclick: () => regPickStep() }, "Back"), h("span", { class: "spacer" }),
-    todo.length || certNew || extraItem || repeatItem ? markBtn : h("button", { class: "btn primary", type: "button", onclick: closeRegistry }, "Done"));
+    todo.length || certNew || extraItem || repeatItem || groupItem || first ? markBtn : h("button", { class: "btn primary", type: "button", onclick: closeRegistry }, "Done"));
   count();
 }
 // "Check off 2, update 1 date, mark 1 as EMS Registry", for the save button and the toast after it
@@ -2773,8 +2810,11 @@ function regExtraDoc(r, old) {
 const alsoKey = a => `${a.date}|${String(a.title || "").toLowerCase()}`;
 const alsoOf = r => Object.fromEntries(Object.entries({ date: r.date, title: String(r.title).slice(0, 200),
   hours: rowHours(r) != null ? rowHours(r) : 0, hoursBy: r.hours || null }).filter(([, v]) => v != null));
-async function applyStatusReport(picks, cert, extras = [], repeats = []) {
-  if (!picks.length && !cert && !extras.length && !repeats.length) return;
+async function applyStatusReport(picks, cert, extras = [], repeats = [], groups = null) {
+  if (!picks.length && !cert && !extras.length && !repeats.length && !groups) return;
+  // The groups from the certification (a first visit has none saved yet, so undoing takes them away again)
+  const prevGroups = groups ? { roles: S.roles ? S.roles.slice() : null, city: S.city } : null;
+  if (groups) { S.roles = groups.roles.slice(); S.city = groups.city; S.setupMode = null; saveSettings(); renderAll(); }
   const before = picks.map(({ m }) => [m.it.id, S.progress[m.it.id] ? { ...S.progress[m.it.id] } : null]);
   // Repeat completions, by training, merged with any the training already has (the same row replaces its old copy)
   const addAlso = new Map();
@@ -2818,9 +2858,15 @@ async function applyStatusReport(picks, cert, extras = [], repeats = []) {
     }
     noteBackupDue("report");
     const more = [cert ? `saved your ${cert.name} certification` : "", repeats.length ? `added ${repeats.length} more ${repeats.length === 1 ? "completion" : "completions"}` : "",
-      extras.length ? `saved ${extras.length} other ${extras.length === 1 ? "course" : "courses"}` : ""].filter(Boolean).join(", ");
+      extras.length ? `saved ${extras.length} other ${extras.length === 1 ? "course" : "courses"}` : "", groups ? (prevGroups.roles === null ? "set your groups" : "updated your groups") : ""].filter(Boolean).join(", ");
     toast(`${regSaveWords(picks, "Checked off", "updated", "marked", "added hours to", more)} from your status report.`, { label: "Undo", fn: async () => {
       for (const [id, prev] of before) await queueProgress(id, () => prev).catch(() => {});
+      if (prevGroups) {
+        S.roles = prevGroups.roles; S.city = prevGroups.city;
+        if (prevGroups.roles === null) await settingsWrite.then(() => S.db.collection("data/users/" + S.uid).doc("_settings").delete()).catch(() => {});
+        else saveSettings();
+        renderAll();
+      }
       toast("Undone.");
     } });
   } catch (e) { toast(errText(e, "Not all of them were saved. Try again.")); }
