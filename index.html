@@ -2659,11 +2659,15 @@ async function pdfText(file) {
   const lib = await loadPdfJs();
   const pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false }).promise;
   const pages = [];
-  for (let n = 1; n <= pdf.numPages; n++) pages.push((await (await pdf.getPage(n)).getTextContent()).items);
+  for (let n = 1; n <= pdf.numPages; n++) {
+    // Where each piece of text sits as the page is shown (a page can be stored turned sideways, like 2026 FEMA certificates)
+    const page = await pdf.getPage(n), shown = page.getViewport({ scale: 1 }).transform;
+    pages.push((await page.getTextContent()).items.map(i => ({ str: i.str, at: lib.Util.transform(shown, i.transform) })));
+  }
   const inOrder = pages.map(items => items.map(i => i.str).join(" ")).join(" ");
   if (parseStatusReport(inOrder).length) return inOrder;
-  // Some PDFs store text out of reading order: put it back top to bottom, left to right
-  return pages.map(items => [...items].sort((a, b) => (b.transform[5] - a.transform[5]) || (a.transform[4] - b.transform[4])).map(i => i.str).join(" ")).join(" ");
+  // Some PDFs store text out of reading order: put it back top to bottom, left to right as shown
+  return pages.map(items => [...items].sort((a, b) => (a.at[5] - b.at[5]) || (a.at[4] - b.at[4])).map(i => i.str).join(" ")).join(" ");
 }
 // Each Registry course goes to one training. A completion fits an assignment best inside its window: from when it went
 // out (or 60 days before it was due, whichever is earlier) to its due date. A late completion fits next, by how late.
@@ -3233,7 +3237,7 @@ function certPickStep(msg, pasted) {
   const forIt = certPrefer();
   F("reg-body").replaceChildren(...[
     forIt ? h("p", { class: "reg-status" }, `For: ${forIt.title || "Untitled training"}`) : null,
-    h("p", null, "Choose the certificate's PDF: SmarterU's for City trainings like HIPAA, or PA TRAIN's for an EMS course. A photo of it works too. It's read on this device and isn't uploaded."),
+    h("p", null, "Choose the certificate's PDF: SmarterU's for City trainings like HIPAA, PA TRAIN's for an EMS course, or FEMA's for an IS course. A photo of it works too. It's read on this device and isn't uploaded."),
     h("div", { class: "reg-pick" }, h("label", { class: "btn primary" }, "Choose the certificate", fileIn)),
     h("details", { class: "reg-paste", open: pasted != null },
       h("summary", null, "Or paste the certificate's words"),
@@ -3247,12 +3251,14 @@ function certPickStep(msg, pasted) {
 function readCertificateText(text) {
   const t = String(text || "").trim();
   if (!t) return certPickStep("Paste the certificate's words first.", "");
-  const card = parseAhaCard(t);
-  if (card && (card.issued || card.expires)) { F("reg-title").textContent = "Read your AHA eCard"; return ecardReviewStep({ file: null, card }); }
+  const card = readCard(t);
+  if (card) { F("reg-title").textContent = cardTitle(card); return ecardReviewStep({ file: null, card }); }
   const train = parseTrainCert(t);
   if (train && train.date) return trainCertStep(null, train);
+  const fema = parseFemaCert(t);
+  if (fema && fema.date) return femaCertStep(null, fema);
   const parsed = parseSmarterU(t);
-  if (!parsed.date) return certPickStep("No completion date was found in those words. A SmarterU certificate has a date like 19-Oct-2026, and a PA TRAIN one like 03/14/2026.", t);
+  if (!parsed.date) return certPickStep("No completion date was found in those words. A SmarterU certificate has a date like 19-Oct-2026, a PA TRAIN one like 03/14/2026, and a FEMA one like \"Issued this 14th Day of March, 2026\".", t);
   const match = matchCertificateCourse(parsed.rest);
   certReviewStep({ file: null, date: parsed.date, it: match || certPrefer(), rest: parsed.rest, found: !!match });
 }
@@ -3290,6 +3296,39 @@ function trainCertStep(file, c) {
   const m = matchTrainCert(c);
   certReviewStep({ file, date: c.date, it: m || certPrefer(), rest: c.title, found: !!m, train: c });
 }
+/* FEMA Independent Study certificates: a "Certificate of Achievement" from the Emergency Management Institute (the
+   National Disaster & Emergency Management University on 2026 ones). Laid out from public samples, not yet from a
+   member's own: the member's name, "…completion of the Independent Study course:", the course ("IS-100.c: Introduction
+   to Incident Command System, ICS-100"), the credit ("0.20 IACET CEU"; 1 CEU is 10 hours) and "Issued this 1st Day of
+   June, 2026". It goes to the training it matches, or to Training taken elsewhere as other training. The member's name
+   and the signers aren't kept. */
+function parseFemaCert(text) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  const code = t.match(/\bIS-0*(\d{1,4})(\.[a-z])?\b/i);
+  const fema = /Emergency Management Institute|Emergency Management University|Independent Study course/i.test(t);
+  if (!fema && !(code && /IACET\s*CEU/i.test(t))) return null;
+  const d = t.match(/Issued this (\d{1,2})(?:st|nd|rd|th)? Day of ([A-Za-z]+),? (\d{4})/i);
+  const mon = d ? MONTH.findIndex(m => m.toLowerCase() === d[2].toLowerCase()) : -1;
+  const date = mon >= 0 ? `${d[3]}-${pad(mon + 1)}-${pad(d[1])}` : "";
+  const ceu = t.match(/(\d+(?:\.\d+)?)\s*IACET\s*CEU/i);
+  // The course: its number, then its name up to the credit, the date or the signatures. On 2026 certificates the
+  // signer's name ("First M. Last, Ph.D.") comes right after the course name, so it's taken out first.
+  let title = "";
+  if (code) {
+    const u = t.replace(/\s+[A-Z][a-z'-]+(?:\s+[A-Z]\.)?\s+[A-Z][a-z'-]+(?:,?\s*Ph\.?\s?D\.?)?(?=\s+(?:Deputy\s+)?Superintendent)/g, " ");
+    const at = u.search(/\bIS-0*\d{1,4}(?:\.[a-z])?\b/i);
+    let name = u.slice(at).replace(/^IS-0*\d{1,4}(?:\.[a-z])?\s*:?\s*/i, "")
+      .split(/\s+\d+(?:\.\d+)?\s*IACET|\s+Issued this|\s+Superintendent|\s+Emergency Management Institute|\s+National Disaster|\s+(?:completion of the|This Certificate|has reaffirmed|through continued|professional development)\b/i)[0];
+    const ics = name.match(/^(.*?\bICS-\d+)/i);
+    if (ics) name = ics[1];
+    title = `IS-${code[1]}${(code[2] || "").toLowerCase()} ${name}`.replace(/\s+,/g, ",").trim().slice(0, 160);
+  }
+  return { date: parseISO(date) ? date : "", hours: ceu ? round2(Number(ceu[1]) * 10) : null, type: "other", where: "FEMA", title };
+}
+function femaCertStep(file, c) {
+  const m = matchCertificateCourse(c.title);
+  certReviewStep({ file, date: c.date, it: m || certPrefer(), rest: c.title, found: !!m, train: c });
+}
 // The training whose name appears in the certificate's text (the member's name sits beside it and is ignored)
 function matchCertificateCourse(rest) {
   const words = regWords(rest);
@@ -3307,12 +3346,14 @@ async function readCertificate(file) {
   let parsed, text;
   try { text = await pdfText(file); parsed = parseSmarterU(text); }
   catch { return certPickStep("That file couldn't be read. Choose the certificate's PDF, or a photo of it."); }
-  // An AHA eCard chosen here goes to its own reader
-  const card = parseAhaCard(text);
-  if (card && (card.issued || card.expires)) { F("reg-title").textContent = "Read your AHA eCard"; return ecardReviewStep({ file, card }); }
+  // A CPR card (an AHA eCard or a Red Cross certificate) chosen here goes to the card reader
+  const card = readCard(text);
+  if (card) { F("reg-title").textContent = cardTitle(card); return ecardReviewStep({ file, card }); }
   const train = parseTrainCert(text);
   if (train && train.date) return trainCertStep(file, train);
-  if (!parsed.date) return certPickStep("No completion date was found. Is this a SmarterU or PA TRAIN certificate?");
+  const fema = parseFemaCert(text);
+  if (fema && fema.date) return femaCertStep(file, fema);
+  if (!parsed.date) return certPickStep("No completion date was found. Is this a SmarterU, PA TRAIN or FEMA certificate?");
   const match = matchCertificateCourse(parsed.rest);
   certReviewStep({ file, date: parsed.date, it: match || certPrefer(), rest: parsed.rest, found: !!match });
 }
@@ -3321,7 +3362,7 @@ async function readCertificate(file) {
 const sameCourse = (a, b) => !!(a && b && a !== b && ((a.courseNo && String(a.courseNo) === String(b.courseNo)) || titleOf(a).toLowerCase() === titleOf(b).toLowerCase()));
 // Whether a training already has a completion on that date (its check-off, or another time it was taken)
 const completedOn = (it, d) => { const p = S.progress[it.id] || {}; return (p.done && p.completedAt === d) || (Array.isArray(p.also) && p.also.some(a => a.date === d)); };
-// train: what a PA TRAIN certificate says (its hours and credit type), when it's one
+// train: what a PA TRAIN or FEMA certificate says (its hours, credit type and where it was taken), when it's one
 function certReviewStep({ file, photo, date, it, rest, found = !!it, train = null }) {
   const choices = S.items.filter(x => !expiredLabel(x) || x === it || x === certPrefer())
     .sort((a, b) => (isDone(a) - isDone(b)) || titleOf(a).localeCompare(titleOf(b)));
@@ -3372,7 +3413,7 @@ function certReviewStep({ file, photo, date, it, rest, found = !!it, train = nul
     if (sel.value === "__other" && !(hrs >= 0 && hrs <= 999)) return fail("Hours should be a number, like 1.");
     btn.disabled = true;
     await applyCertificate({ file, it: x || null, date: d, title: titleIn.value.trim(), hours: hrs, certHours,
-      where: train ? "PA TRAIN" : "SmarterU", type: train ? train.type : "other" }).catch(() => fail("That wasn't saved. Try again."));
+      where: train ? train.where || "PA TRAIN" : "SmarterU", type: train ? train.type : "other" }).catch(() => fail("That wasn't saved. Try again."));
     btn.disabled = false;
   });
   label();
@@ -3444,8 +3485,28 @@ function parseAhaCard(text) {
   const expires = month && +month[1] >= 1 && +month[1] <= 12 ? isoOf(new Date(+month[2], +month[1], 0)) : "";
   // The eCard code: 12 letters and numbers (the instructor's ID beside it is 11 digits)
   const code = (t.match(/(?<![A-Za-z0-9])(?=(?:[A-Za-z]*\d){6})[A-Za-z0-9]{12}(?![A-Za-z0-9])/) || [""])[0].toUpperCase();
-  return { course: ahaCourse(t), issued: parseISO(issued) ? issued : "", expires, code };
+  return { course: ahaCourse(t), issued: parseISO(issued) ? issued : "", expires, code, issuer: "AHA" };
 }
+/* American Red Cross certificates (BLS, CPR/AED, First Aid…) from redcross.org. Laid out from a public sample, not yet
+   from a member's own: "Certificate of Completion", the member's name, "has successfully completed requirements for
+   <course>", "conducted by American Red Cross", "Date Completed: MM/DD/YYYY", "Valid Period: 2 Years" and "Certificate
+   ID: <7 letters and numbers>". Good for that many years from the date completed. The name and instructor aren't kept;
+   anything it can't read, the member types in. */
+function parseRedCrossCard(text) {
+  const t = String(text || "").replace(/\s+/g, " ").replace(/\S*redcross\.org\S*/gi, " ");
+  if (!/American Red Cross/i.test(t) || !/Certificate ID|Valid Period|requirements for|Date Completed/i.test(t)) return null;
+  const d = t.match(/Date Completed\s*:?\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i) || t.match(/(?<![\d/])(\d{1,2})\/(\d{1,2})\/(\d{4})(?![\d/])/);
+  const issued = d ? `${d[3]}-${pad(d[1])}-${pad(d[2])}` : "";
+  const v = t.match(/Valid (?:Period|For)\s*:?\s*(\d{1,2})\s*Years?/i), years = v ? +v[1] : 2;
+  const ok = !!parseISO(issued);
+  const course = ((t.match(/requirements for\s+(.+?)\s+conducted by/i) || [])[1] || "").trim();
+  return { course: /\bBLS\b/.test(course) || /Basic Life Support/i.test(course) ? "CPR / BLS" : course.slice(0, 80),
+    issued: ok ? issued : "", expires: ok ? isoOf(new Date(+issued.slice(0, 4) + years, +issued.slice(5, 7) - 1, +issued.slice(8, 10))) : "",
+    code: ((t.match(/Certificate ID\s*:?\s*([A-Za-z0-9]{5,12})\b/i) || [])[1] || "").toUpperCase(), issuer: "Red Cross", assumed: !v };
+}
+// A certification card read from its PDF or words: an AHA eCard or a Red Cross certificate, with dates (or null)
+const readCard = text => { const c = parseAhaCard(text) || parseRedCrossCard(text); return c && (c.issued || c.expires) ? c : null; };
+const cardTitle = c => c && c.issuer === "Red Cross" ? "Read your Red Cross certificate" : "Read your AHA eCard";
 function openEcardReader() {
   if (!S.uid || !S.db) return;
   regFocus = document.activeElement;
@@ -3477,9 +3538,10 @@ async function readEcard(file) {
   let text;
   try { text = await pdfText(file); }
   catch { return ecardPickStep("That file couldn't be read. Choose the eCard's PDF, or a photo of it."); }
-  const card = parseAhaCard(text);
-  // A SmarterU or PA TRAIN certificate chosen here goes to its own reader
-  if (!card && (parseSmarterU(text).date || (parseTrainCert(text) || {}).date)) { F("reg-title").textContent = "Check off from a certificate"; S.certFor = null; return readCertificate(file); }
+  const card = parseAhaCard(text) || parseRedCrossCard(text);
+  if (card && card.issuer === "Red Cross") F("reg-title").textContent = cardTitle(card);
+  // A SmarterU, PA TRAIN or FEMA certificate chosen here goes to its own reader
+  if (!card && (parseSmarterU(text).date || (parseTrainCert(text) || {}).date || (parseFemaCert(text) || {}).date)) { F("reg-title").textContent = "Check off from a certificate"; S.certFor = null; return readCertificate(file); }
   if (!card) return ecardPickStep("That doesn't look like an AHA eCard. Choose the PDF you saved from ecards.heart.org.");
   if (!card.issued && !card.expires) return ecardPickStep("No dates were found on that card. Choose the full size or wallet size eCard PDF, or a photo of it.");
   ecardReviewStep({ file, card });
@@ -3487,7 +3549,8 @@ async function readEcard(file) {
 function readEcardText(text) {
   const t = String(text || "").trim();
   if (!t) return ecardPickStep("Paste the eCard's words first.", "");
-  const card = parseAhaCard(t);
+  const card = parseAhaCard(t) || parseRedCrossCard(t);
+  if (card && card.issuer === "Red Cross") F("reg-title").textContent = cardTitle(card);
   if (!card) return ecardPickStep("Those words don't look like an AHA eCard. Copy all the words on the card, including “American Heart Association”.", t);
   if (!card.issued && !card.expires) return ecardPickStep("No dates were found in those words. An eCard has an issue date like 3/14/2026 and a Renew By month like 03/2028.", t);
   ecardReviewStep({ file: null, card });
@@ -3526,7 +3589,7 @@ function ecardReviewStep({ file, photo, card }) {
     const name = sel.value, is = issuedIn.value, ex = expiresIn.value;
     if (!name) return fail("Pick which card this is.", sel);
     if (is && (!parseISO(is) || is > today())) return fail("The issue date can't be in the future.", issuedIn);
-    if (!parseISO(ex)) return fail("Pick the date the card is good through: the last day of its Renew By month.", expiresIn);
+    if (!parseISO(ex)) return fail(card.issuer === "Red Cross" ? "Pick the date the card is good through." : "Pick the date the card is good through: the last day of its Renew By month.", expiresIn);
     if (is && ex < is) return fail("It can't run out before it was issued.", expiresIn);
     btn.disabled = true;
     await saveEcard({ file, name, issued: is, expires: ex, code: codeIn.value.trim().slice(0, 40) })
@@ -3536,18 +3599,19 @@ function ecardReviewStep({ file, photo, card }) {
   label();
   F("reg-body").replaceChildren(...[
     photo ? h("p", null, "Photos can't be read on this phone, so pick the card and fill in its dates from the photo. The photo is kept as your card.")
-      : h("p", { class: "reg-status" }, `Found ${card.course ? `your ${card.course === "CPR / BLS" ? "BLS" : card.course} card` : "an AHA card"}: ` +
+      : h("p", { class: "reg-status" }, `Found ${card.course ? `your ${card.course === "CPR / BLS" ? "BLS" : card.course} card` : card.issuer === "Red Cross" ? "a Red Cross certificate" : "an AHA card"}: ` +
         [card.issued ? `issued ${regDate(card.issued)}` : "", card.expires ? `good through ${regDate(card.expires)}` : ""].filter(Boolean).join(", ") + "."),
     guessed ? h("p", null, "The Renew By date wasn't found, so it's set to two years after the issue date. Check it against the card.") : null,
+    card.assumed && card.expires ? h("p", null, "The certificate didn't say how long it's good for, so it's set to two years. Check it against the certificate.") : null,
     h("div", { class: "cr-form" },
       h("label", { for: "ec-name" }, "Card"), sel,
       h("label", { for: "ec-issued" }, "Issued"), issuedIn,
       h("label", { for: "ec-expires" }, "Good through"), expiresIn,
-      h("label", { for: "ec-code" }, "eCard code (optional)"), codeIn),
+      h("label", { for: "ec-code" }, card.issuer === "Red Cross" ? "Certificate ID (optional)" : "eCard code (optional)"), codeIn),
     h("p", { class: "hint" }, file ? "Your name isn't saved. The PDF stays on this device as your card." : "Your name isn't saved."),
     upNote,
     err].filter(Boolean));
-  F("reg-foot").replaceChildren(h("button", { class: "btn ghost", type: "button", onclick: () => ecardPickStep() }, "Back"), h("span", { class: "spacer" }), btn);
+  F("reg-foot").replaceChildren(h("button", { class: "btn ghost", type: "button", onclick: () => { if (card.issuer === "Red Cross") { F("reg-title").textContent = "Check off from a certificate"; certPickStep(); } else ecardPickStep(); } }, "Back"), h("span", { class: "spacer" }), btn);
 }
 async function saveEcard({ file, name, issued, expires, code }) {
   const old = sameCertAs(name), id = old ? old.id : "c-" + rid(), prev = old ? S.certs[old.id] || null : null;
@@ -3774,7 +3838,7 @@ function toolsPage() {
       h("li", { class: "mhead" }, icoUpload(), h("span", null, h("b", { id: "tl-imp" }, "Import your training"), h("small", null, "Add courses, hours and certifications." +
         (S.site && S.site.sharesIn && S.site.sharesIn() ? " You can also share a PDF or photo to Train Smart from your email or Photos." : "")))),
       mrow(icoDoc(), "Upload EMS status report", null, openRegistry, "tl-reg"),
-      mrow(icoDoc(), "Read a certificate", "SmarterU or PA TRAIN", openCertReader, "tl-cert"),
+      mrow(icoDoc(), "Read a certificate", "SmarterU, PA TRAIN or FEMA", openCertReader, "tl-cert"),
       mrow(icoAward(), "Read AHA eCard", "CPR, BLS, ACLS or PALS", openEcardReader, "tl-ecard"),
       mrow(icoCap(), "Add a class", "Type the code from an in-person class", () => openClassSheet(null), "tl-class")),
     h("h2", { class: "menu-lbl", id: "tl-dev" }, "Record & devices"),
@@ -4005,9 +4069,9 @@ function findPage() {
       h("ul", { class: "rec-src" },
         src("EMT, Paramedic and EMSVO: the EMS Registry", REGISTRY_URL, "Sign in, open Con-Ed, and tap Print Status Report. Reading it here fills in your courses, hours and EMS certification."),
         src("CPR, BLS, ACLS and PALS: AHA eCards", "https://ecards.heart.org/student/myecards", "Look yours up with your name and email, or the eCard code, answer your security question, then tap View and save the PDF. Your email from eCards@heart.org links there too. Attach the PDF in Add a certification and the card and its dates fill in."),
-        src("Red Cross certificates", "https://www.redcross.org/take-a-class/digital-certificate", "Only for classes the Red Cross taught. Check your card: it says American Heart Association or American Red Cross. Fire Department CPR and BLS cards are usually AHA (above). Search with the email you used for class, your name and class date, or the certificate ID, then download it."),
+        src("Red Cross certificates", "https://www.redcross.org/take-a-class/digital-certificate", "Only for classes the Red Cross taught. Check your card: it says American Heart Association or American Red Cross. Fire Department CPR and BLS cards are usually AHA (above). Search with the email you used for class, your name and class date, or the certificate ID, then download it. Attach the PDF in Add a certification and the card and its dates fill in."),
         src("PA TRAIN courses", "https://www.train.org/pa/", "Sign in, open Your Learning, and print a course certificate or your transcript. Read a certificate, under Add to record, checks the course off the same day, with its hours."),
-        src("FEMA NIMS and ICS courses", "https://training.fema.gov/is/", "Sign in to the Independent Study student portal with your FEMA SID to print certificates or your transcript."))),
+        src("FEMA NIMS and ICS courses", "https://training.fema.gov/is/", "Sign in to the Independent Study student portal with your FEMA SID to print certificates or your transcript. Read a certificate, under Add to record, saves the course with its hours."))),
     h("p", { class: "rec-muted" }, "Then use Add to record on My record (Add a certification, or Add training taken elsewhere) and attach the PDF or a photo.")];
 }
 
@@ -4017,7 +4081,7 @@ function openAddMenu() {
   F("menu-title").textContent = "Add to record";
   F("menu-body").replaceChildren(h("ul", { class: "menu" },
     mrow(icoUpload(), "Upload EMS status report", "Fills in EMS courses, their hours and your EMS certification", go(openRegistry), "am-reg"),
-    mrow(icoDoc(), "Read a certificate", "SmarterU or PA TRAIN: checks off the training", go(openCertReader), "am-cert"),
+    mrow(icoDoc(), "Read a certificate", "SmarterU, PA TRAIN or FEMA: checks off the training", go(openCertReader), "am-cert"),
     mrow(icoAward(), "Add a certification", "EMT, CPR, ACLS and others, with a photo or PDF of the card. An AHA eCard PDF fills itself in.", go(() => openRec("cert")), "am-c"),
     mrow(icoCap(), "Add a class", "Type the code from an in-person class, or scan its QR code", go(() => openClassSheet(null)), "am-class"),
     mrow(icoCap(), "Add training taken elsewhere", "Classes and courses that aren't in Train Smart", go(() => openRec("training")), "am-x")));
@@ -4133,7 +4197,7 @@ function recFields(kind, r) {
     // A CPR, BLS, ACLS or PALS card fills itself in from its AHA eCard PDF (readCardInto)
     const aha = !r.name || /CPR|BLS|ACLS|PALS|PEARS|Heartsaver/i.test(r.name);
     return [
-      aha ? h("p", { class: "hint" }, "Have the AHA eCard PDF? Attach it below and the card, its dates and the eCard code fill in.") : null,
+      aha ? h("p", { class: "hint" }, "Have the AHA eCard or Red Cross certificate PDF? Attach it below and the card, its dates and its code fill in.") : null,
       field("rf-cert", "Certification", sel),
       h("div", { class: "rf", id: "rf-other", hidden: !(r.name && !known) },
         h("label", { for: "rf-certname" }, "Its name"), h("input", { id: "rf-certname", type: "text", maxlength: "80", value: known ? "" : r.name || "" })),
@@ -4162,7 +4226,7 @@ async function readCardInto(file) {
   if (!z || z.kind !== "cert" || !file || !(/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name))) return;
   note.textContent = "Reading the PDF…"; note.hidden = false;
   let card = null;
-  try { card = parseAhaCard(await pdfText(file)); } catch {}
+  try { card = readCard(await pdfText(file)); } catch {}
   // Closed, or another file picked, while it was reading
   if (S.recEdit !== z || z.file !== file) return;
   if (!card || (!card.issued && !card.expires)) { note.hidden = true; return; }
@@ -4178,9 +4242,9 @@ async function readCardInto(file) {
   if (expires) F("rf-expires").value = expires;
   const name = card.course || "", same = !z.id && name ? sameCertAs(name) : null;
   z.read = { name, expires };
-  note.textContent = [`Filled in from your AHA eCard${name ? `: ${name === "CPR / BLS" ? "BLS" : name}` : ""}` +
+  note.textContent = [`Filled in from your ${card.issuer === "Red Cross" ? "Red Cross certificate" : "AHA eCard"}${name ? `: ${name === "CPR / BLS" ? "BLS" : name}` : ""}` +
       [card.issued ? `, issued ${regDate(card.issued)}` : "", expires ? `, good through ${regDate(expires)}` : ""].join("") + ". Check the boxes above, then Save.",
-    card.expires ? "" : "The Renew By date wasn't found, so it's set to two years after the issue date.",
+    card.expires ? (card.assumed ? "It didn't say how long it's good for, so it's set to two years." : "") : "The Renew By date wasn't found, so it's set to two years after the issue date.",
     same ? `Saving replaces the ${same.name} already in your record${same.expires ? ` (${daysUntil(same.expires) < 0 ? "expired" : "good through"} ${regDate(same.expires)})` : ""}.` : ""].filter(Boolean).join(" ");
 }
 async function saveRec(e) {
@@ -5474,7 +5538,8 @@ function addSiteControls() {
 
 // Shared from Android's share sheet: the service worker kept the PDF, photo or text on this device (in the "ts-share"
 // cache). Once the page is unlocked, it's taken out of there and opened in the reader that fits. A status report, an
-// AHA eCard, or a SmarterU or PA TRAIN certificate goes straight to its reader; anything else asks what it is.
+// AHA eCard or Red Cross certificate, or a SmarterU, PA TRAIN or FEMA certificate goes straight to its reader; anything
+// else asks what it is.
 let pendingShare = new URLSearchParams(location.search).get("share") === "1";
 if (pendingShare) { try { history.replaceState(null, "", location.pathname); } catch {} }
 async function takePendingShare() {
@@ -5503,17 +5568,19 @@ async function openShared(file, text) {
     openRegistry();
     return readStatusReport(async () => words);
   }
-  const card = words ? parseAhaCard(words) : null;
-  if (card && (card.issued || card.expires)) {
+  const card = words ? readCard(words) : null;
+  if (card) {
     openEcardReader();
+    F("reg-title").textContent = cardTitle(card);
     return ecardReviewStep({ file: isPdf ? file : null, card });
   }
   const train = words ? parseTrainCert(words) : null;
-  if ((train && train.date) || (words && parseSmarterU(words).date)) {
+  const fema = words ? parseFemaCert(words) : null;
+  if ((train && train.date) || (fema && fema.date) || (words && parseSmarterU(words).date)) {
     openCertReader();
     return isPdf ? readCertificate(file) : readCertificateText(words);
   }
-  if (!file) return toast("That isn't a status report, an AHA eCard, or a SmarterU or PA TRAIN certificate, so Train Smart can't read it.");
+  if (!file) return toast("That isn't a status report, a CPR card or a course certificate Train Smart can read.");
   askWhatShared(file, isPdf);
 }
 // A photo, or a PDF Train Smart can't read: the member says what it is, and the file goes to that place
@@ -5528,7 +5595,7 @@ function askWhatShared(file, isPdf) {
   F("menu-body").replaceChildren(
     h("p", null, `“${file.name}”. Pick what it is. It stays on this device.`),
     h("ul", { class: "menu" },
-      mrow(icoDoc(), "A SmarterU or PA TRAIN certificate", "Checks off the training", go(() => { openCertReader(); readCertificate(file); }), "sh-cert"),
+      mrow(icoDoc(), "A SmarterU, PA TRAIN or FEMA certificate", "Checks off the training", go(() => { openCertReader(); readCertificate(file); }), "sh-cert"),
       mrow(icoAward(), "A certification card", "CPR, EMT, ACLS and others", go(attach("cert")), "sh-card"),
       mrow(icoCap(), "A certificate for training taken elsewhere", "A class or course that isn't in Train Smart", go(attach("training")), "sh-x"),
       isPdf ? mrow(icoUpload(), "My EMS status report", "From the EMS Registry", go(() => { openRegistry(); readStatusReport(() => pdfText(file)); }), "sh-reg") : null));
