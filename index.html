@@ -1379,6 +1379,8 @@ function stateOf(it) {
   }
   const ex = expiredLabel(it);
   if (ex) return { key: "expired", label: ex };
+  const newer = replacedBy(it);
+  if (newer) return { key: "expired", label: `Replaced by the ${trainingMonth(newer) || "newer one"}` };
   const n = daysUntil(it.due);
   if (n == null) return { key: "open", label: "No deadline" };
   if (n < 0) return { key: "late", label: "Overdue · " + memoDeadline(it) };
@@ -1388,8 +1390,22 @@ function stateOf(it) {
   return { key: "later", label: "Due " + fmtDate(it.due) };
 }
 
+// An older assignment of a course that was assigned again (Trauma Assessment for September 2025, then June 2026): once
+// the newer one has gone out, the course link leads to it and any completion counts toward it (the same window the
+// status report uses), so the older one can't be done anymore. Unfinished, it shows as replaced instead of staying
+// overdue; it can still be marked done with the date the member took it back then. Matched by the Registry course
+// number or the TRAIN course link (never a general link, which City trainings can share).
+const courseKey = x => String(x.courseNo || "") || ((String(x.link || "").match(/train\.org\/pa\/course\/\d+/i) || [""])[0]).toLowerCase();
+function replacedBy(it) {
+  const k = courseKey(it);
+  if (!k || !parseISO(it.due)) return null;
+  const day = 864e5, now = parseISO(today());
+  const opens = x => { const due = parseISO(x.due), sent = parseISO(x.received); return Math.min(due - 60 * day, sent ? sent - 30 * day : Infinity); };
+  return S.items.filter(x => x !== it && courseKey(x) === k && parseISO(x.due) && x.due > it.due && opens(x) <= now)
+    .sort((a, b) => a.due.localeCompare(b.due))[0] || null;
+}
 const titleOf = it => String(it.title || "");
-const byTitle = (a, b) => titleOf(a.it).localeCompare(titleOf(b.it), undefined, { sensitivity: "base" });
+const byTitle =(a, b) => titleOf(a.it).localeCompare(titleOf(b.it), undefined, { sensitivity: "base" });
 const whenOf = it => (parseISO(it.received) ? it.received : "") || (parseISO(it.due) ? it.due : "");
 const inOrder = (view, c) => S.dirs[view] === "desc" ? -c : c;
 function cmp(a, b) {
@@ -1836,7 +1852,7 @@ function eyebrowOf(it, st) {
   const d = parseISO(it.due);
   const cme = /train\.org/i.test(it.link || "") || /\bCME\b/.test(it.summary || "");
   const first = cme && d && it.required ? `${MON[d.getMonth()]} ${d.getFullYear()} CME` : (it.category || "Training");
-  const second = st.key === "expired" ? "Expired" : it.required ? "Required" : "Optional";
+  const second = st.key === "expired" ? (/^Replaced/.test(st.label) ? "Replaced" : "Expired") : it.required ? "Required" : "Optional";
   return `${first} · ${second}`;
 }
 
@@ -1888,6 +1904,8 @@ function renderDetail() {
   rows.push(["Due by", parseISO(it.due) ? fmtLong(it.due) : "No deadline"]);
   if (parseISO(it.availableUntil)) rows.push([daysUntil(it.availableUntil) < 0 ? "Expired on" : "Available until", fmtLong(it.availableUntil)]);
   else if (it.expired === true) rows.push(["Status", "No longer offered"]);
+  const newer = !done && !expiredLabel(it) ? replacedBy(it) : null;
+  if (newer) rows.push(["Status", `Replaced by the ${trainingMonth(newer) || "newer one"}. The course link now counts toward that one. If you took it back then, tap Mark done and set that date.`]);
   if (it.duration) rows.push(["Time needed", it.duration]);
   if (link) rows.push(["Course link", h("a", { href: link, target: "_blank", rel: "noopener noreferrer" }, linkLabel(link))]);
   if (parseISO(it.received)) rows.push(["Emailed on", fmtLong(it.received)]);
@@ -3119,7 +3137,7 @@ function countsToward(it, kind) {
 }
 // Under a target that's short: the open trainings in the member's groups that count toward it, soonest due first
 function gapList(t, st) {
-  const open = S.items.filter(it => !isDone(it) && !expiredLabel(it) && inMyGroups(it) && countsToward(it, t.type))
+  const open = S.items.filter(it => !isDone(it) && !expiredLabel(it) && !replacedBy(it) && inMyGroups(it) && countsToward(it, t.type))
     .sort((a, b) => String(a.due || "9999").localeCompare(String(b.due || "9999")) || titleOf(a).localeCompare(titleOf(b)));
   const all = S.gapAll.has(t.id);
   const kindName = { cpc: "Clinical Patient Care", emsvo: "EMSVO", ems: "continuing education" }[t.type] || (HOUR_TYPES[t.type] || "training").toLowerCase();
