@@ -587,6 +587,16 @@ svg{flex:none}
 .rec-nudge .rec-home{background:var(--surface)}
 /* App lock: covers everything until the PIN is in */
 .pinlock{position:fixed; inset:0; z-index:60; background:var(--bg); display:grid; place-items:center; padding:24px 16px; overflow:auto}
+/* First-visit welcome: over the app, under the sheets it opens (z-index 30) */
+.welcome{position:fixed; inset:0; z-index:25; background:var(--bg); display:grid; place-items:center; padding:max(24px,env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px)); overflow:auto}
+.welcome-card{width:min(440px,100%); display:grid; gap:14px; background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:24px 20px; box-shadow:var(--shadow)}
+.welcome-card .brand{justify-self:center; margin-bottom:4px}
+.welcome-card h1{margin:0; font-size:24px; line-height:1.2; font-weight:800}
+.welcome-card p{margin:0; color:var(--muted); font-size:15px}
+.welcome-card .btn{width:100%; justify-content:center}
+.welcome-card .link-btn{justify-self:center}
+.welcome-steps{font-size:15px}
+.welcome-card .link-btn{text-align:center; min-height:44px}
 .pinlock-card{width:min(400px,100%); display:grid; gap:14px; background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:24px 20px; box-shadow:var(--shadow)}
 .pinlock-card h1{margin:0; font-size:24px; font-weight:800}
 .pinlock-card .btn{width:100%}
@@ -1501,6 +1511,7 @@ function sectionize(rows) {
 /* ---------- rendering ---------- */
 function renderAll() {
   takePendingClass();
+  syncWelcome();
   // My record is its own page: no list filters and no details pane
   F("app").classList.toggle("record-mode", S.view === "record");
   if (S.view === "record") {
@@ -1598,34 +1609,62 @@ function renderHead(v) {
     note.hidden = false;
   } else note.hidden = true;
 
-  // First visit: ask which groups the member is in
-  const slot = F("setup-slot");
-  if (view === "mine" && S.uid && S.db && S.rolesLoaded && S.roles === null) slot.replaceChildren(setupCard());
-  else slot.replaceChildren();
+  // The first visit is the welcome screen (syncWelcome), not a card in the list
+  F("setup-slot").replaceChildren();
 }
 
-// First visit starts with the status report: reading it sets the member's groups from their certification
-// (regReviewStep), and checks off what they've done. Picking groups by hand is the other way in.
-function setupCard() {
-  if (S.setupMode !== "pick") return h("section", { class: "setup", "aria-labelledby": "setup-title" },
-    h("h2", { id: "setup-title" }, "Start with your status report"),
-    h("p", null, "Your PA EMS Registry status report shows your certification, so Train Smart can pick your groups: an EMT is in All EMS, and a paramedic is in All EMS and ALS providers. It also checks off the courses you've already done. It's read on this device and isn't uploaded."),
-    h("div", { class: "setup-actions" },
-      h("button", { class: "btn primary", type: "button", "data-key": "setup-reg", onclick: openRegistry }, icoUpload(), "Upload status report"),
-      h("button", { class: "btn", type: "button", "data-key": "setup-pick", onclick: () => { S.setupMode = "pick"; renderAll(); } }, "Pick my groups instead")),
-    h("p", { class: "hint" }, "Get it from the EMS Registry: Con-Ed, then Print Status Report. Not EMS? Pick your groups instead."));
+/* First visit: a welcome screen over everything, until the member reads their status report (which sets their groups
+   from their certification, in regReviewStep) or skips it and picks their groups. It can't be scrolled past or closed.
+   The status report reader opens on top of it, and it's still there if the member backs out. */
+const welcomeDue = () => !!(S.uid && S.db && S.rolesLoaded && S.roles === null);
+function syncWelcome() {
+  let el = document.getElementById("welcome");
+  const sheetOpen = () => !!document.querySelector(".bs-wrap:not([hidden]), .sheet-wrap:not([hidden]), .viewer-wrap:not([hidden])");
+  if (!welcomeDue()) {
+    if (el) { el.remove(); if (!sheetOpen()) { F("app").inert = false; document.documentElement.classList.remove("locked"); } }
+    return;
+  }
+  const mode = S.setupMode === "pick" ? "pick" : "report", fresh = !el;
+  if (fresh) { el = h("div", { class: "welcome", id: "welcome", role: "dialog", "aria-modal": "true", "aria-labelledby": "welcome-title" }); document.body.append(el); }
+  if (fresh || el.dataset.mode !== mode) {
+    el.dataset.mode = mode;
+    el.replaceChildren(welcomeCard(mode));
+    if (!sheetOpen()) F("welcome-title").focus();
+  }
+  // The trainings may load after the welcome appears: keep the report's start date current
+  const dates = document.getElementById("welcome-dates");
+  if (dates) dates.textContent = reportDatesWords() ? " " + reportDatesWords() : "";
+  F("app").inert = true; document.documentElement.classList.add("locked");
+}
+function welcomeCard(mode) {
+  const brand = h("span", { class: "brand" }, "Train ", h("span", { class: "swipe" }, "Smart"));
+  const go = m => () => { S.setupMode = m; syncWelcome(); };
+  if (mode === "report") return h("div", { class: "welcome-card" }, brand,
+    h("h1", { id: "welcome-title", tabindex: "-1" }, "Start with your status report"),
+    h("p", null, "It picks your groups (EMT: All EMS. Paramedic: All EMS and ALS) and checks off the courses you've done."),
+    h("button", { class: "btn primary big", type: "button", "data-key": "setup-reg", onclick: openRegistry }, icoUpload(), "Upload status report"),
+    h("a", { class: "btn big", href: REGISTRY_URL, target: "_blank", rel: "noopener noreferrer", "data-key": "setup-registry" },
+      "Get it from the EMS Registry", icoOut(), h("span", { class: "sr" }, " (opens in a new tab)")),
+    h("details", { class: "reg-paste welcome-how" },
+      h("summary", null, "How to print it"),
+      h("div", { class: "reg-paste-body" },
+        h("ol", { class: "reg-steps welcome-steps" },
+          h("li", null, "Sign in to the EMS Registry and open ", h("b", null, "Con-Ed"), "."),
+          h("li", null, "Tap ", h("b", null, "Print Status Report"), ".", h("span", { id: "welcome-dates" }, reportDatesWords() ? " " + reportDatesWords() : "")),
+          h("li", null, "Save it as a PDF, come back, and tap ", h("b", null, "Upload status report"), ".")),
+        h("p", { class: "hint" }, "It's read on this device and never sent anywhere."))),
+    h("button", { class: "link-btn", type: "button", "data-key": "setup-pick", onclick: go("pick") }, "No report or not EMS? Pick my groups"));
   const chips = ROLE_CHIPS.map(g => h("button", {
     class: "chip", type: "button", "aria-pressed": String(S.setupPick.has(g)),
     onclick: e => { S.setupPick.has(g) ? S.setupPick.delete(g) : S.setupPick.add(g); e.currentTarget.setAttribute("aria-pressed", String(S.setupPick.has(g))); },
   }, icoCheck(), AUD_LABEL[g]));
-  return h("section", { class: "setup", "aria-labelledby": "setup-title" },
-    h("h2", { id: "setup-title" }, "Which groups are you in?"),
+  return h("div", { class: "welcome-card" }, brand,
+    h("h1", { id: "welcome-title", tabindex: "-1" }, "Which groups are you in?"),
     h("p", null, "Pick every group that applies. City-wide covers trainings for all City employees, so it starts picked. You can change this later under My groups."),
     h("div", { class: "chips" }, chips),
-    h("div", { class: "setup-actions" },
-      h("button", { class: "btn primary", type: "button", onclick: () => saveRoles(GROUPS.filter(g => S.setupPick.has(g)), S.setupPick.has("city")) }, "Save my groups"),
-      h("button", { class: "btn ghost", type: "button", onclick: () => saveRoles([], true) }, "Only City-wide")),
-    h("button", { class: "link-btn", type: "button", "data-key": "setup-back", onclick: () => { S.setupMode = "report"; renderAll(); } }, "Use my status report instead"));
+    h("button", { class: "btn primary big", type: "button", "data-key": "setup-save", onclick: () => saveRoles(GROUPS.filter(g => S.setupPick.has(g)), S.setupPick.has("city")) }, "Save my groups"),
+    h("button", { class: "btn big", type: "button", "data-key": "setup-city", onclick: () => saveRoles([], true) }, "Only City-wide"),
+    h("button", { class: "link-btn", type: "button", "data-key": "setup-back", onclick: go("report") }, "Use my status report instead"));
 }
 
 // Overdue / To do / Complete, counted the same way as always: To do is every unfinished, unexpired training in My
@@ -1861,7 +1900,7 @@ function renderDetail() {
           p.proof ? h("button", { class: "link-btn", type: "button", "data-key": "dpv:" + it.id, onclick: () => openProof(p.proof) }, "View certificate")
             : certFits(it) ? h("button", { class: "link-btn", type: "button", "data-key": "dcert:" + it.id, onclick: () => openCertReader(it.id) }, "Add the certificate") : null]
         : [h("button", { class: "btn big", type: "button", onclick: () => toggleDone(it.id, true) }, h("span", { class: "cb-box" }, icoCheck()), "Mark done"),
-          // City-wide and SmarterU trainings: check off with the certificate's date, and keep it
+          // City-wide, SmarterU and PA TRAIN trainings: check off with the certificate's date, and keep it
           certFits(it) ? h("button", { class: "btn big", type: "button", "data-key": "dcert:" + it.id, onclick: () => openCertReader(it.id) }, icoDoc(), "Check off with certificate") : null]) : null),
     dateEdit,
     // Other times the member took this course, from the status report; their hours count too
@@ -2001,6 +2040,8 @@ function openBs(id) {
 function closeBs(id) {
   F(id).hidden = true; F("app").inert = false; document.documentElement.classList.remove("locked");
   if (S.sheetFocus && S.sheetFocus.isConnected) S.sheetFocus.focus();
+  // Back to the first-visit welcome screen if it's still up
+  syncWelcome();
 }
 
 function openFilters() {
@@ -2632,6 +2673,22 @@ function matchStatusReport(rows) {
 }
 
 const regDate = iso => { const d = parseISO(iso); return d ? `${MON[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}` : iso; };
+// Where a status report should start: the month of the oldest training still open here (so every one of them can be
+// checked off), or the start of the member's certification period when that's earlier (so all of its hours count).
+// It moves forward by itself as old trainings close, so it never needs updating by hand.
+function reportStartDate() {
+  const dates = S.items.filter(it => !expiredLabel(it) && it.hoursType !== "none")
+    .map(it => [it.received, it.due].filter(d => parseISO(d)).sort()[0]).filter(Boolean).sort();
+  let start = dates[0] ? dates[0].slice(0, 7) + "-01" : "";
+  const cy = cycleOf(emsCertRecord());
+  if (cy && (!start || cy.start < start)) start = cy.start;
+  return { start, known: !!cy };
+}
+// "If it asks for dates, use Jan 1, 2025 to today…", or "" before the trainings have loaded
+function reportDatesWords() {
+  const { start, known } = reportStartDate();
+  return start ? `If it asks for dates, use ${regDate(start)} to today${known ? "" : ", or start earlier if your certification began before then"}.` : "";
+}
 let regFocus = null;
 function openRegistry() {
   if (!S.uid || !S.db) return;
@@ -2652,7 +2709,7 @@ function regPickStep(msg) {
     h("p", null, "Train Smart reads the courses on your PA EMS Registry status report and checks off the matching trainings here, with the Registry's dates. It's read on this device and isn't uploaded."),
     h("ol", { class: "reg-steps" },
       h("li", null, h("a", { href: REGISTRY_URL, target: "_blank", rel: "noopener noreferrer" }, "Open the EMS Registry"), " and sign in."),
-      h("li", null, "Open ", h("b", null, "Con-Ed"), " and tap ", h("b", null, "Print Status Report"), ". Save it as a PDF."),
+      h("li", null, "Open ", h("b", null, "Con-Ed"), " and tap ", h("b", null, "Print Status Report"), ". Save it as a PDF.", reportDatesWords() ? " " + reportDatesWords() : ""),
       h("li", null, "Come back here and choose that PDF.")),
     h("div", { class: "reg-pick" }, h("label", { class: "btn primary" }, "Choose the PDF", fileIn)),
     h("details", { class: "reg-paste" },
@@ -3129,9 +3186,9 @@ function openCertReader(preferId) {
   openBs("reg-sheet");
 }
 const certPrefer = () => S.certFor ? S.items.find(x => x.id === S.certFor) || null : null;
-// Trainings checked off with a certificate rather than the status report: City-wide ones, SmarterU courses, and any
-// training that asks for a certificate of completion
-const certFits = it => audOf(it) === "city" || it.certRequired === true || /smarteru\.com/i.test(it.link || "");
+// Trainings that can be checked off with a certificate: City-wide ones, SmarterU and PA TRAIN courses (a TRAIN
+// certificate checks one off the same day, before the Registry posts it), and any training that asks for a certificate
+const certFits = it => audOf(it) === "city" || it.certRequired === true || /smarteru\.com|train\.org\/pa\//i.test(it.link || "");
 function certPickStep(msg, pasted) {
   const fileIn = h("input", { type: "file", accept: "application/pdf,.pdf,image/*", hidden: true });
   fileIn.addEventListener("change", () => { const f = fileIn.files[0]; if (f) readCertificate(f); });
@@ -3140,7 +3197,7 @@ function certPickStep(msg, pasted) {
   const forIt = certPrefer();
   F("reg-body").replaceChildren(...[
     forIt ? h("p", { class: "reg-status" }, `For: ${forIt.title || "Untitled training"}`) : null,
-    h("p", null, "SmarterU emails a certificate of completion for City trainings like HIPAA and cybersecurity. Choose the PDF from that email, or a photo of the certificate. It's read on this device and isn't uploaded."),
+    h("p", null, "Choose the certificate's PDF: SmarterU's for City trainings like HIPAA, or PA TRAIN's for an EMS course. A photo of it works too. It's read on this device and isn't uploaded."),
     h("div", { class: "reg-pick" }, h("label", { class: "btn primary" }, "Choose the certificate", fileIn)),
     h("details", { class: "reg-paste", open: pasted != null },
       h("summary", null, "Or paste the certificate's words"),
@@ -3156,8 +3213,10 @@ function readCertificateText(text) {
   if (!t) return certPickStep("Paste the certificate's words first.", "");
   const card = parseAhaCard(t);
   if (card && (card.issued || card.expires)) { F("reg-title").textContent = "Read your AHA eCard"; return ecardReviewStep({ file: null, card }); }
+  const train = parseTrainCert(t);
+  if (train && train.date) return trainCertStep(null, train);
   const parsed = parseSmarterU(t);
-  if (!parsed.date) return certPickStep("No completion date was found in those words. A SmarterU certificate has a date like 19-Oct-2026.", t);
+  if (!parsed.date) return certPickStep("No completion date was found in those words. A SmarterU certificate has a date like 19-Oct-2026, and a PA TRAIN one like 03/14/2026.", t);
   const match = matchCertificateCourse(parsed.rest);
   certReviewStep({ file: null, date: parsed.date, it: match || certPrefer(), rest: parsed.rest, found: !!match });
 }
@@ -3167,6 +3226,33 @@ function parseSmarterU(text) {
   const mon = m ? MON.map(x => x.toLowerCase()).indexOf(m[2].toLowerCase()) : -1;
   const date = mon >= 0 ? `${m[3]}-${String(mon + 1).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}` : "";
   return { date: parseISO(date) ? date : "", rest: m ? (t.slice(0, m.index) + " " + t.slice(m.index + m[0].length)).trim() : t };
+}
+/* PA TRAIN certificates ("Certificate of Continuing Education", delivered via the PA DOH Learning Management System).
+   Only the values are text; the labels are part of the background picture. Top to bottom: the member's name, the
+   course title, its 10-digit Registry course number, the credit ("1 EMS") and the completion date ("MM/DD/YYYY").
+   Words pasted from a photo bring the labels too. The course number matches the training exactly (the same one the
+   status report prints); the member's name is never kept. */
+function parseTrainCert(text) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  const no = t.match(/(?<!\d)(10\d{8})(?!\d)/), credit = t.match(/(?<![\w.])(\d{1,2}(?:\.\d{1,2})?)\s+(EMSVO|EMS)\b/);
+  const d = t.match(/(?<![\d/])(\d{1,2})\/(\d{1,2})\/(\d{4})(?![\d/])/);
+  const labelled = /CERTIFICATE OF CONTINUING EDUCATION|PA DOH LMS|Department of Health Learning Management System/i.test(t);
+  if (!d || !(labelled || (no && credit))) return null;
+  const date = `${d[3]}-${pad(d[1])}-${pad(d[2])}`;
+  // The title is what comes just before the course number; the name above it (and any labels) are dropped
+  let title = t.slice(0, no ? no.index : credit ? credit.index : d.index)
+    .replace(/^.*\bcontinuing education course\b\s*/i, "").replace(/^.*\bThis certifies that\b\s*/i, "");
+  const pa = title.search(/\bPA-EMS\b/i);
+  if (pa > 0) title = title.slice(pa);
+  return { date: parseISO(date) ? date : "", courseNo: no ? no[1] : "", hours: credit ? Number(credit[1]) : null,
+    type: credit && /EMSVO/i.test(credit[2]) ? "emsvo" : "ems", title: title.trim() };
+}
+// The training a TRAIN certificate is for: its course number first (and, for a course assigned more than once, the
+// assignment its date fits), then its name, the same way the status report is matched
+const matchTrainCert = c => (matchStatusReport([{ title: c.title, date: c.date, courseNo: c.courseNo }]).matched[0] || {}).it || null;
+function trainCertStep(file, c) {
+  const m = matchTrainCert(c);
+  certReviewStep({ file, date: c.date, it: m || certPrefer(), rest: c.title, found: !!m, train: c });
 }
 // The training whose name appears in the certificate's text (the member's name sits beside it and is ignored)
 function matchCertificateCourse(rest) {
@@ -3188,12 +3274,15 @@ async function readCertificate(file) {
   // An AHA eCard chosen here goes to its own reader
   const card = parseAhaCard(text);
   if (card && (card.issued || card.expires)) { F("reg-title").textContent = "Read your AHA eCard"; return ecardReviewStep({ file, card }); }
-  if (!parsed.date) return certPickStep("No completion date was found. Is this a SmarterU certificate of completion?");
+  const train = parseTrainCert(text);
+  if (train && train.date) return trainCertStep(file, train);
+  if (!parsed.date) return certPickStep("No completion date was found. Is this a SmarterU or PA TRAIN certificate?");
   const match = matchCertificateCourse(parsed.rest);
   certReviewStep({ file, date: parsed.date, it: match || certPrefer(), rest: parsed.rest, found: !!match });
 }
 // found: the certificate's own words named the training (otherwise it's the one the reader was opened from, if any)
-function certReviewStep({ file, photo, date, it, rest, found = !!it }) {
+// train: what a PA TRAIN certificate says (its hours and credit type), when it's one
+function certReviewStep({ file, photo, date, it, rest, found = !!it, train = null }) {
   const choices = S.items.filter(x => !expiredLabel(x) || x === it)
     .sort((a, b) => (isDone(a) - isDone(b)) || titleOf(a).localeCompare(titleOf(b)));
   const sel = h("select", { id: "cr-it" }, h("option", { value: "" }, "Pick the training"),
@@ -3204,10 +3293,11 @@ function certReviewStep({ file, photo, date, it, rest, found = !!it }) {
   const who = pref.get("recname", "");
   const guess = who && rest.toLowerCase().startsWith(who.toLowerCase()) ? rest.slice(who.length).trim() : rest;
   const titleIn = h("input", { id: "cr-title", type: "text", maxlength: "200", value: guess });
-  const hoursIn = h("input", { id: "cr-hours", type: "number", inputmode: "decimal", min: "0", max: "999", step: "0.25", placeholder: "e.g. 1" });
+  const certHours = train && train.hours != null ? train.hours : null;
+  const hoursIn = h("input", { id: "cr-hours", type: "number", inputmode: "decimal", min: "0", max: "999", step: "0.25", placeholder: "e.g. 1", value: certHours != null ? String(certHours) : "" });
   const other = h("div", { class: "cr-other", hidden: sel.value !== "__other" },
     h("label", { for: "cr-title" }, "Course name"), titleIn, h("p", { class: "hint" }, "Check it, and take out your name if it's in there."),
-    h("label", { for: "cr-hours" }, "Hours (the certificate doesn't say)"), hoursIn);
+    h("label", { for: "cr-hours" }, certHours != null ? "Hours" : "Hours (the certificate doesn't say)"), hoursIn);
   const err = h("p", { class: "reg-err", role: "alert", hidden: true });
   const btn = h("button", { class: "btn primary", type: "button" }, "Check off");
   // What saving will do to a training that's already checked off
@@ -3235,14 +3325,15 @@ function certReviewStep({ file, photo, date, it, rest, found = !!it }) {
     const hrs = hoursIn.value.trim() === "" ? 0 : Number(hoursIn.value);
     if (sel.value === "__other" && !(hrs >= 0 && hrs <= 999)) return fail("Hours should be a number, like 1.");
     btn.disabled = true;
-    await applyCertificate({ file, it: x || null, date: d, title: titleIn.value.trim(), hours: hrs }).catch(() => fail("That wasn't saved. Try again."));
+    await applyCertificate({ file, it: x || null, date: d, title: titleIn.value.trim(), hours: hrs, certHours,
+      where: train ? "PA TRAIN" : "SmarterU", type: train ? train.type : "other" }).catch(() => fail("That wasn't saved. Try again."));
     btn.disabled = false;
   });
   label();
   F("reg-body").replaceChildren(...[
     photo ? h("p", null, it ? "Photos can't be read on this phone, so check the training and pick the date from the photo. The photo is kept with it."
         : "Photos can't be read on this phone, so pick the training and the date from the photo. The photo is kept with it.")
-      : it && found ? h("p", { class: "reg-status" }, `Found “${it.title}”, completed ${regDate(date)}.`)
+      : it && found ? h("p", { class: "reg-status" }, `Found “${it.title}”, completed ${regDate(date)}${certHours != null ? `, ${fmtHours(certHours) || "0 hours"}` : ""}.`)
       : it ? h("p", { class: "reg-status" }, `Completed ${regDate(date)}. The certificate's course name didn't match a training here, so check that “${it.title}” is the right one.`)
       : h("p", { class: "reg-status" }, `Completed ${regDate(date)}. That course isn't matched to a training here, so pick it, or save it as training taken elsewhere.`),
     // Opened from one training's details, but the certificate names another
@@ -3252,7 +3343,9 @@ function certReviewStep({ file, photo, date, it, rest, found = !!it }) {
     err].filter(Boolean));
   F("reg-foot").replaceChildren(h("button", { class: "btn ghost", type: "button", onclick: () => certPickStep() }, "Back"), h("span", { class: "spacer" }), btn);
 }
-async function applyCertificate({ file, it, date, title, hours }) {
+// certHours: the hours the certificate itself gives (PA TRAIN's do; SmarterU's don't). where/type: for a course that
+// isn't in Train Smart, where it was taken and what its hours count toward
+async function applyCertificate({ file, it, date, title, hours, certHours = null, where = "SmarterU", type = "other" }) {
   // Pasted words come without a file, so there's no certificate to keep
   let proof = null, lost = false;
   if (file) { try { proof = await saveProofFile(file); } catch (e) { if (e && e.tooBig) throw e; lost = true; } }
@@ -3264,7 +3357,7 @@ async function applyCertificate({ file, it, date, title, hours }) {
     // (one from the EMS Registry stays that way); otherwise check it off with the certificate's date
     const upgraded = p.done && p.completedAt === date && !p.proof && p.via !== "registry" && p.via !== "certificate";
     if (p.done && p.completedAt === date) await writeProgress(it.id, { proof: proof || p.proof || null, via: p.via === "registry" ? "registry" : "certificate" });
-    else await writeProgress(it.id, { done: true, completedAt: date, via: "certificate", hours: typeof p.hours === "number" ? p.hours : hoursOf(it), hoursBy: null, proof: proof || p.proof || null });
+    else await writeProgress(it.id, { done: true, completedAt: date, via: "certificate", hours: certHours != null ? certHours : typeof p.hours === "number" ? p.hours : hoursOf(it), hoursBy: null, proof: proof || p.proof || null });
     noteBackupDue("certificate");
     toast(lost ? "Checked off, but the certificate couldn't be kept in this browser." : upgraded ? `${it.title || "Training"}: now marked as from the certificate.`
       : `${it.title || "Training"}: done ${regDate(date)}${proof ? ", with the certificate" : ""}.`,
@@ -3273,7 +3366,7 @@ async function applyCertificate({ file, it, date, title, hours }) {
   }
   const id = "x-" + rid();
   await retry(() => col.doc(id).set(Object.fromEntries(Object.entries({ kind: "training", title: title.slice(0, 200), date, hours: Math.round(hours * 100) / 100,
-    type: "other", where: "SmarterU", via: "certificate", proof, addedAt: now, updatedAt: now }).filter(([, v]) => v != null && v !== ""))));
+    type: HOUR_TYPES[type] ? type : "other", where, via: "certificate", proof, addedAt: now, updatedAt: now }).filter(([, v]) => v != null && v !== ""))));
   noteBackupDue("certificate");
   toast("Saved to My record under Training taken elsewhere.", { label: "Undo", fn: () => col.doc(id).delete().catch(() => {}) });
 }
@@ -3336,8 +3429,8 @@ async function readEcard(file) {
   try { text = await pdfText(file); }
   catch { return ecardPickStep("That file couldn't be read. Choose the eCard's PDF, or a photo of it."); }
   const card = parseAhaCard(text);
-  // A SmarterU certificate chosen here goes to its own reader
-  if (!card && parseSmarterU(text).date) { F("reg-title").textContent = "Check off from a certificate"; S.certFor = null; return readCertificate(file); }
+  // A SmarterU or PA TRAIN certificate chosen here goes to its own reader
+  if (!card && (parseSmarterU(text).date || (parseTrainCert(text) || {}).date)) { F("reg-title").textContent = "Check off from a certificate"; S.certFor = null; return readCertificate(file); }
   if (!card) return ecardPickStep("That doesn't look like an AHA eCard. Choose the PDF you saved from ecards.heart.org.");
   if (!card.issued && !card.expires) return ecardPickStep("No dates were found on that card. Choose the full size or wallet size eCard PDF, or a photo of it.");
   ecardReviewStep({ file, card });
@@ -3632,7 +3725,7 @@ function toolsPage() {
       h("li", { class: "mhead" }, icoUpload(), h("span", null, h("b", { id: "tl-imp" }, "Import your training"), h("small", null, "Add courses, hours and certifications." +
         (S.site && S.site.sharesIn && S.site.sharesIn() ? " You can also share a PDF or photo to Train Smart from your email or Photos." : "")))),
       mrow(icoDoc(), "Upload EMS status report", null, openRegistry, "tl-reg"),
-      mrow(icoDoc(), "Read SmarterU certificate", null, openCertReader, "tl-cert"),
+      mrow(icoDoc(), "Read a certificate", "SmarterU or PA TRAIN", openCertReader, "tl-cert"),
       mrow(icoAward(), "Read AHA eCard", "CPR, BLS, ACLS or PALS", openEcardReader, "tl-ecard"),
       mrow(icoCap(), "Add a class", "Type the code from an in-person class", () => openClassSheet(null), "tl-class")),
     h("h2", { class: "menu-lbl", id: "tl-dev" }, "Record & devices"),
@@ -3864,7 +3957,7 @@ function findPage() {
         src("EMT, Paramedic and EMSVO: the EMS Registry", REGISTRY_URL, "Sign in, open Con-Ed, and tap Print Status Report. Reading it here fills in your courses, hours and EMS certification."),
         src("CPR, BLS, ACLS and PALS: AHA eCards", "https://ecards.heart.org/student/myecards", "Look yours up with your name and email, or the eCard code, answer your security question, then tap View and save the PDF. Your email from eCards@heart.org links there too. Attach the PDF in Add a certification and the card and its dates fill in."),
         src("Red Cross certificates", "https://www.redcross.org/take-a-class/digital-certificate", "Only for classes the Red Cross taught. Check your card: it says American Heart Association or American Red Cross. Fire Department CPR and BLS cards are usually AHA (above). Search with the email you used for class, your name and class date, or the certificate ID, then download it."),
-        src("PA TRAIN courses", "https://www.train.org/pa/", "Sign in, open Your Learning, and print a course certificate or your transcript."),
+        src("PA TRAIN courses", "https://www.train.org/pa/", "Sign in, open Your Learning, and print a course certificate or your transcript. Read a certificate, under Add to record, checks the course off the same day, with its hours."),
         src("FEMA NIMS and ICS courses", "https://training.fema.gov/is/", "Sign in to the Independent Study student portal with your FEMA SID to print certificates or your transcript."))),
     h("p", { class: "rec-muted" }, "Then use Add to record on My record (Add a certification, or Add training taken elsewhere) and attach the PDF or a photo.")];
 }
@@ -3875,7 +3968,7 @@ function openAddMenu() {
   F("menu-title").textContent = "Add to record";
   F("menu-body").replaceChildren(h("ul", { class: "menu" },
     mrow(icoUpload(), "Upload EMS status report", "Fills in EMS courses, their hours and your EMS certification", go(openRegistry), "am-reg"),
-    mrow(icoDoc(), "Read SmarterU certificate", "Checks off a City training like HIPAA", go(openCertReader), "am-cert"),
+    mrow(icoDoc(), "Read a certificate", "SmarterU or PA TRAIN: checks off the training", go(openCertReader), "am-cert"),
     mrow(icoAward(), "Add a certification", "EMT, CPR, ACLS and others, with a photo or PDF of the card. An AHA eCard PDF fills itself in.", go(() => openRec("cert")), "am-c"),
     mrow(icoCap(), "Add a class", "Type the code from an in-person class, or scan its QR code", go(() => openClassSheet(null)), "am-class"),
     mrow(icoCap(), "Add training taken elsewhere", "Classes and courses that aren't in Train Smart", go(() => openRec("training")), "am-x")));
@@ -5332,7 +5425,7 @@ function addSiteControls() {
 
 // Shared from Android's share sheet: the service worker kept the PDF, photo or text on this device (in the "ts-share"
 // cache). Once the page is unlocked, it's taken out of there and opened in the reader that fits. A status report, an
-// AHA eCard or a SmarterU certificate goes straight to its reader; anything else asks what it is.
+// AHA eCard, or a SmarterU or PA TRAIN certificate goes straight to its reader; anything else asks what it is.
 let pendingShare = new URLSearchParams(location.search).get("share") === "1";
 if (pendingShare) { try { history.replaceState(null, "", location.pathname); } catch {} }
 async function takePendingShare() {
@@ -5366,11 +5459,12 @@ async function openShared(file, text) {
     openEcardReader();
     return ecardReviewStep({ file: isPdf ? file : null, card });
   }
-  if (words && parseSmarterU(words).date) {
+  const train = words ? parseTrainCert(words) : null;
+  if ((train && train.date) || (words && parseSmarterU(words).date)) {
     openCertReader();
     return isPdf ? readCertificate(file) : readCertificateText(words);
   }
-  if (!file) return toast("That isn't a status report, an AHA eCard or a SmarterU certificate, so Train Smart can't read it.");
+  if (!file) return toast("That isn't a status report, an AHA eCard, or a SmarterU or PA TRAIN certificate, so Train Smart can't read it.");
   askWhatShared(file, isPdf);
 }
 // A photo, or a PDF Train Smart can't read: the member says what it is, and the file goes to that place
@@ -5385,7 +5479,7 @@ function askWhatShared(file, isPdf) {
   F("menu-body").replaceChildren(
     h("p", null, `“${file.name}”. Pick what it is. It stays on this device.`),
     h("ul", { class: "menu" },
-      mrow(icoDoc(), "A SmarterU certificate", "Checks off a City training like HIPAA", go(() => { openCertReader(); readCertificate(file); }), "sh-cert"),
+      mrow(icoDoc(), "A SmarterU or PA TRAIN certificate", "Checks off the training", go(() => { openCertReader(); readCertificate(file); }), "sh-cert"),
       mrow(icoAward(), "A certification card", "CPR, EMT, ACLS and others", go(attach("cert")), "sh-card"),
       mrow(icoCap(), "A certificate for training taken elsewhere", "A class or course that isn't in Train Smart", go(attach("training")), "sh-x"),
       isPdf ? mrow(icoUpload(), "My EMS status report", "From the EMS Registry", go(() => { openRegistry(); readStatusReport(() => pdfText(file)); }), "sh-reg") : null));
