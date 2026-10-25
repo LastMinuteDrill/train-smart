@@ -1776,7 +1776,7 @@ function row(it, st, terms) {
     class: "markdone", type: "button", role: "checkbox", "aria-checked": "false",
     "aria-label": "Mark done: " + name, "data-key": "c:" + it.id, disabled: !S.uid || !S.db,
     title: S.uid ? "Mark done" : "Sign in to Claude to tick off trainings",
-    onclick: () => toggleDone(it.id, true),
+    onclick: () => certFirst(it) ? askHowDone(it) : toggleDone(it.id, true),
   }, h("span", { class: "cb-box" }, icoCheck()), h("span", { "aria-hidden": "true" }, "Mark done"));
   const go = link && !expired ? h("a", { class: "btn primary go", href: link, target: "_blank", rel: "noopener noreferrer", "data-key": "o:" + it.id,
         onclick: () => { if (isNew(it)) { markSeen(it.id); setTimeout(renderAll, 0); } } }, "Open training", icoOut(), h("span", { class: "sr" }, " (opens in a new tab)"))
@@ -1789,6 +1789,21 @@ function row(it, st, terms) {
       meta ? h("p", { class: "row-meta" }, meta) : null),
     h("span", { class: "badge b-" + st.key }, st.key === "late" ? icoAlert() : null, st.label),
     h("div", { class: "row-acts" }, go, mark));
+}
+// City trainings are shown done with their certificate (SmarterU emails one after the course), and the status report
+// never lists them. So Mark done on one of their cards asks how: with the certificate (its date, kept with the training)
+// or just marked done today. EMS courses come in from the status report, so theirs ticks straight away.
+const certFirst = it => audOf(it) === "city" || it.certRequired === true || /smarteru\.com/i.test(it.link || "");
+function askHowDone(it) {
+  if (!S.uid || !S.db) return;
+  const go = fn => () => { closeBs("menu-sheet"); fn(); };
+  F("menu-title").textContent = "Mark done";
+  F("menu-body").replaceChildren(
+    h("p", { class: "reg-status" }, it.title || "Untitled training"),
+    h("ul", { class: "menu" },
+      mrow(icoDoc(), "Upload the certificate", "Uses its date and keeps it with the training", go(() => openCertReader(it.id)), "hd-cert"),
+      mrow(icoCheck(), "Just mark it done", "With today's date. You can add the certificate later.", go(() => toggleDone(it.id, true)), "hd-mark")));
+  openBs("menu-sheet");
 }
 // Where a completion came from: the member's EMS Registry status report, a certificate, or the member's own checkmark
 // (older checkmarks don't say)

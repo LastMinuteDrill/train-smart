@@ -1,6 +1,6 @@
 // Train Smart offline copy. Pages and data come from the network first, so updates show right away;
 // the saved copy (still encrypted) is used only when there's no connection.
-const CACHE = "train-smart-d45ee8a33732";
+const CACHE = "train-smart-0d651b4c3266";
 const SHELL = ["./", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "icon.svg", "data.enc"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
