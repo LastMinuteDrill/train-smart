@@ -627,6 +627,11 @@ svg{flex:none}
 .lock-cbx input{width:20px; height:20px; accent-color:var(--done)}
 .lock-card .form-err{margin:0}
 .lock-card .btn{width:100%}
+#inapp{z-index:55}
+.inapp-steps{margin:0; padding-left:22px; display:grid; gap:6px; font-size:16px}
+.inapp-steps b{font-weight:800}
+#inapp-link{width:100%; font-size:14px; padding:10px 12px; min-height:44px; border:1px solid var(--line-strong); border-radius:10px; background:var(--sunken); color:var(--ink)}
+#inapp-stay{justify-self:center; min-height:44px}
 #install-sheet{z-index:60}
 .install-banner{display:flex; align-items:center; flex-wrap:wrap; gap:10px 12px; margin-top:14px; padding:10px 6px 10px 12px; background:var(--surface); border:1px solid var(--line); border-radius:12px}
 .install-banner img{width:44px; height:44px; border-radius:10px; flex:none}
@@ -673,6 +678,23 @@ try { var t = JSON.parse(localStorage.getItem("ts:theme") || '"auto"'); if (t ==
       Add to home screen
     </button>
   </form>
+</div>
+
+<div class="lock" id="inapp" hidden>
+  <div class="lock-card" role="dialog" aria-modal="true" aria-labelledby="inapp-title">
+    <p class="brand">Train <span class="swipe">Smart</span></p>
+    <h1 id="inapp-title">Open this in Chrome</h1>
+    <p class="hint" id="inapp-why"></p>
+    <ol class="inapp-steps">
+      <li>Tap <b id="inapp-menu">⋮</b> at the top right.</li>
+      <li>Tap <b id="inapp-item">Open in Chrome</b>.</li>
+    </ol>
+    <p class="hint" id="inapp-carry">Your invite link comes along, so it opens there with nothing to type.</p>
+    <button class="btn" id="inapp-copy" type="button">Copy the link instead</button>
+    <input id="inapp-link" type="text" readonly hidden aria-label="Train Smart link">
+    <p class="hint" id="inapp-copied" role="status" hidden></p>
+    <button class="link-btn" id="inapp-stay" type="button">Keep going here</button>
+  </div>
 </div>
 
 <div class="app" id="app">
@@ -5279,7 +5301,9 @@ const aesKey = raw => crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["en
 async function openWith(key, iv, ct) { return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct)); }
 const openJson = async (key, iv, ct) => JSON.parse(new TextDecoder().decode(await openWith(key, fromB64(iv), fromB64(ct))));
 const remembered = name => { try { const v = JSON.parse(localStorage.getItem(name) || "null"); return v && typeof v.raw === "string" ? v : null; } catch { return null; } };
-const remember = (name, salt, raw) => { try { localStorage.setItem(name, JSON.stringify({ salt, raw: toB64(raw) })); } catch {} };
+// With the key goes how this device got in (its invite link, or the password's own key), so it can get back in by
+// itself when the key changes after someone's invite is taken away
+const remember = (name, salt, raw, how = {}) => { try { localStorage.setItem(name, JSON.stringify({ salt, raw: toB64(raw), ...how })); } catch {} };
 function forgetKeys() { try { localStorage.removeItem(SITE_KEY); localStorage.removeItem(OLD_KEY); } catch {} }
 
 // Memo PDFs: memos/<id>.enc is a 12-byte IV followed by the encrypted file
@@ -5350,10 +5374,48 @@ function localStore(bundle) {
 // server, and it's taken off the address right away so it doesn't stay in the browser's history. The secret opens this
 // member's copy of the data key in data.enc (inv[id]). A pasted link (or just <id>.<secret>) works the same way.
 const inviteFrom = s => { const m = String(s || "").trim().match(/(?:^|#invite=)([A-Za-z0-9]{6,16})\.([A-Za-z0-9_-]{16,64})$/); return m ? { id: m[1], secret: m[2] } : null; };
+// Links tapped in Facebook, Messenger or Instagram open in that app's own browser, which can lose what's saved and
+// can't add Train Smart to the home screen. There the link stays in the address, so the app's "Open in browser"
+// brings it along, and the member is shown how before anything else (inAppNotice).
+const inAppName = () => {
+  const ua = navigator.userAgent;
+  return /Messenger|FB_IAB\/MESSENGER/i.test(ua) ? "Messenger" : /Instagram/.test(ua) ? "Instagram" : /FBAN|FBAV|FB_IAB|FB4A|FBIOS/.test(ua) ? "Facebook" : "";
+};
+const dropLinkHash = () => { try { history.replaceState(null, "", location.pathname + location.search); } catch {} };
 let pendingInvite = null;
 if (/^#invite=/.test(location.hash)) {
   pendingInvite = inviteFrom(location.hash);
-  try { history.replaceState(null, "", location.pathname + location.search); } catch {}
+  if (!inAppName()) dropLinkHash();
+}
+// Shown once, before unlocking, in another app's browser on a device that hasn't opened Train Smart there before
+function inAppNotice() {
+  const app = inAppName();
+  if (!app) return Promise.resolve();
+  if (remembered(SITE_KEY)) { dropLinkHash(); return Promise.resolve(); }
+  const ios = isIos(), b = ios ? "Safari" : "Chrome";
+  F("inapp-title").textContent = `Open this in ${b}`;
+  F("inapp-why").textContent = `You're in ${app}'s own browser. It can lose what you save, and it can't add Train Smart to your home screen.`;
+  F("inapp-menu").textContent = ios ? "⋯" : "⋮";
+  F("inapp-item").textContent = ios ? "Open in external browser" : "Open in Chrome";
+  F("inapp-carry").hidden = !pendingInvite;
+  const box = F("inapp"), link = F("inapp-link"), said = F("inapp-copied");
+  box.hidden = false; F("app").inert = true; document.documentElement.classList.add("locked");
+  F("inapp-copy").addEventListener("click", async () => {
+    said.hidden = false;
+    try { await navigator.clipboard.writeText(location.href); said.textContent = `Link copied. Open ${b} and paste it into the address bar.`; }
+    catch {
+      // Copying blocked: show the link to copy by hand
+      link.value = location.href; link.hidden = false; link.focus(); link.select();
+      said.textContent = `Copy the link above, then paste it into ${b}.`;
+    }
+  });
+  return new Promise(resolve => {
+    F("inapp-stay").addEventListener("click", () => {
+      box.hidden = true; link.value = ""; F("app").inert = false; document.documentElement.classList.remove("locked");
+      dropLinkHash();
+      resolve();
+    }, { once: true });
+  });
 }
 async function openInvite(box, invite) {
   const slot = box.inv && box.inv[invite.id];
@@ -5365,6 +5427,7 @@ async function openInvite(box, invite) {
 
 // Opens the library: with keys remembered on this device, an invite link, or the password
 async function unlockSite() {
+  await inAppNotice();
   let box;
   try {
     const d = await fetch("data.enc", { cache: "no-cache" });
@@ -5382,23 +5445,38 @@ async function unlockSite() {
     return siteStore;
   };
   // The password makes a key that either is the data key or opens the copy of it kept for the password (pw)
-  const fromPassword = async text => {
-    const raw = await deriveRaw(text, box.salt, box.iter);
-    return box.pw ? openWith(await aesKey(raw), fromB64(box.pw.iv), fromB64(box.pw.ct)) : raw;
-  };
+  const fromPwKey = async raw => box.pw ? openWith(await aesKey(raw), fromB64(box.pw.iv), fromB64(box.pw.ct)) : raw;
+  const pwHow = raw => ({ pw: { salt: box.salt, raw: toB64(raw) } });
+  const inviteHow = invite => ({ inv: invite.id + "." + invite.secret });
 
   // Remembered on this device
   const savedB = remembered(SITE_KEY);
+  let lockedAgain = false;
   if (savedB && savedB.salt === kid) {
     try { return await start(await aesKey(fromB64(savedB.raw))); }
     catch { try { localStorage.removeItem(SITE_KEY); } catch {} }
+  } else if (savedB) {
+    // The key changed since this device saved it: get back in the way it first got in, so nobody has to tap their
+    // link again. Saved before the first change, the key was the password's own. A removed invite or a new password
+    // finds nothing to open.
+    const ways = [];
+    const savedInvite = inviteFrom(savedB.inv);
+    if (savedInvite) ways.push(async () => [await openInvite(box, savedInvite), inviteHow(savedInvite)]);
+    const pwSaved = savedB.pw && typeof savedB.pw.raw === "string" ? savedB.pw : savedB.inv ? null : savedB;
+    if (pwSaved && pwSaved.salt === box.salt && box.pw) ways.push(async () => { const p = fromB64(pwSaved.raw); return [await fromPwKey(p), pwHow(p)]; });
+    for (const way of ways) {
+      try { const [raw, how] = await way(); const store = await start(await aesKey(raw)); remember(SITE_KEY, kid, raw, how); return store; }
+      catch {}
+    }
+    try { localStorage.removeItem(SITE_KEY); } catch {}
+    lockedAgain = true;
   }
   // An invite link just tapped: always remembered, so it's one tap, once
   let inviteBad = false;
   if (pendingInvite) {
     const invite = pendingInvite;
     pendingInvite = null;
-    try { const raw = await openInvite(box, invite); const store = await start(await aesKey(raw)); remember(SITE_KEY, kid, raw); return store; }
+    try { const raw = await openInvite(box, invite); const store = await start(await aesKey(raw)); remember(SITE_KEY, kid, raw, inviteHow(invite)); return store; }
     catch { inviteBad = true; }
   }
 
@@ -5406,6 +5484,7 @@ async function unlockSite() {
   const lock = F("lock"), pw = F("lock-pw"), err = F("lock-err"), btn = F("lock-btn");
   lock.hidden = false; F("app").inert = true; document.documentElement.classList.add("locked");
   if (inviteBad) { err.textContent = "That invite link doesn't work anymore, or part of it is missing. Ask for a new one."; err.hidden = false; }
+  else if (lockedAgain) { err.textContent = "Train Smart was locked on this phone. Tap your invite link again, or paste it here."; err.hidden = false; }
   pw.focus();
   return new Promise(resolve => {
     F("lock-form").addEventListener("submit", async e => {
@@ -5416,9 +5495,10 @@ async function unlockSite() {
       const keep = F("lock-remember").checked, invite = inviteFrom(pw.value);
       let store = null;
       try {
-        const raw = invite ? await openInvite(box, invite) : await fromPassword(pw.value);
+        const pwRaw = invite ? null : await deriveRaw(pw.value, box.salt, box.iter);
+        const raw = invite ? await openInvite(box, invite) : await fromPwKey(pwRaw);
         store = await start(await aesKey(raw));
-        if (keep || invite) remember(SITE_KEY, kid, raw);
+        if (keep || invite) remember(SITE_KEY, kid, raw, invite ? inviteHow(invite) : pwHow(pwRaw));
       } catch {}
       btn.disabled = false; btn.textContent = "Unlock";
       if (!store) {
@@ -5442,7 +5522,8 @@ const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.p
 const isPhone = () => isIos() || /Android/.test(navigator.userAgent);
 // Offered where adding works: on phones, or in a computer browser that offers to install
 function refreshInstall() {
-  const can = !installed() && (isPhone() || !!installPrompt);
+  // Not in Facebook's or another app's browser: adding doesn't work from there
+  const can = !installed() && !inAppName() && (isPhone() || !!installPrompt);
   for (const el of document.querySelectorAll(".install-offer")) el.hidden = !can;
   const banner = F("install-banner");
   if (banner) banner.hidden = !can || pref.get("installBanner", "") === "hidden";
@@ -5551,8 +5632,8 @@ function setupOpen() {
 // Settings), and Move progress to another device (in My record, Record tools)
 const lockDevice = () => { forgetKeys(); location.reload(); };
 function addSiteControls() {
-  S.site = { safariTab: () => isIos() && !installed() && !/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent), addToHomeScreen, lockDevice,
-    openMove, canInstall: () => !installed() && (isPhone() || !!installPrompt),
+  S.site = { safariTab: () => isIos() && !installed() && !inAppName() && !/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent), addToHomeScreen, lockDevice,
+    openMove, canInstall: () => !installed() && !inAppName() && (isPhone() || !!installPrompt),
     // Android's share sheet offers Train Smart once it's on the home screen
     sharesIn: () => isAndroid() && installed() };
   setupOpen();
@@ -5688,13 +5769,13 @@ async function bringInProgress(text) {
 let pendingMove = null;
 if (location.hash.startsWith("#move=")) {
   pendingMove = location.hash;
-  try { history.replaceState(null, "", location.pathname + location.search); } catch {}
+  if (!inAppName()) dropLinkHash();
 }
 function takePendingMove() {
   if (!pendingMove) return;
   const link = pendingMove;
   pendingMove = null;
-  setTimeout(() => bringInProgress(link).catch(() => toast("That progress link didn't work here. It may be from before the password changed; send a new one.")), 300);
+  setTimeout(() => bringInProgress(link).catch(() => toast("That progress link didn't work here. It may be an old one; send a new one.")), 300);
 }
 
 let moveLink = "";
@@ -5723,7 +5804,7 @@ async function moveIn() {
   err.hidden = true;
   if (!text) { err.textContent = "Paste the link from your other device."; err.hidden = false; F("move-paste").focus(); return; }
   try { await bringInProgress(text); closeBs("move-sheet"); }
-  catch { err.textContent = "That doesn't look like a Train Smart progress link, or it's from before the password changed."; err.hidden = false; }
+  catch { err.textContent = "That doesn't look like a Train Smart progress link, or it's an old one. Send a new one."; err.hidden = false; }
 }
 function setupMove() {
   F("move-close").addEventListener("click", () => closeBs("move-sheet"));
