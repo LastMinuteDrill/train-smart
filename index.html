@@ -661,9 +661,9 @@ try { var t = JSON.parse(localStorage.getItem("ts:theme") || '"auto"'); if (t ==
 <div class="lock" id="lock" hidden>
   <form class="lock-card" id="lock-form" novalidate>
     <p class="brand">Train <span class="swipe">Smart</span></p>
-    <h1>Enter the password</h1>
-    <p class="hint">Ask your training coordinator for it. You only need to enter it once on this phone or computer.</p>
-    <label class="lock-lbl" for="lock-pw">Password</label>
+    <h1>Open Train Smart</h1>
+    <p class="hint">Tap the invite link you were sent, or paste it here. You only need to do this once on this phone or computer.</p>
+    <label class="lock-lbl" for="lock-pw">Invite link or password</label>
     <input id="lock-pw" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
     <label class="lock-cbx"><input id="lock-remember" type="checkbox" checked> Remember on this device</label>
     <p class="form-err" id="lock-err" role="alert" hidden></p>
@@ -5346,7 +5346,24 @@ function localStore(bundle) {
   };
 }
 
-// Opens the library: with keys remembered on this device, or after the member types a password
+// Invite links: …/#invite=<id>.<secret>, one per member (tools/invite.js). The part after "#" never reaches the web
+// server, and it's taken off the address right away so it doesn't stay in the browser's history. The secret opens this
+// member's copy of the data key in data.enc (inv[id]). A pasted link (or just <id>.<secret>) works the same way.
+const inviteFrom = s => { const m = String(s || "").trim().match(/(?:^|#invite=)([A-Za-z0-9]{6,16})\.([A-Za-z0-9_-]{16,64})$/); return m ? { id: m[1], secret: m[2] } : null; };
+let pendingInvite = null;
+if (/^#invite=/.test(location.hash)) {
+  pendingInvite = inviteFrom(location.hash);
+  try { history.replaceState(null, "", location.pathname + location.search); } catch {}
+}
+async function openInvite(box, invite) {
+  const slot = box.inv && box.inv[invite.id];
+  if (!slot) throw new Error("no such invite");
+  const b64u = invite.secret.replace(/-/g, "+").replace(/_/g, "/");
+  const wrap = await aesKey(new Uint8Array(await crypto.subtle.digest("SHA-256", fromB64(b64u + "=".repeat((4 - b64u.length % 4) % 4)))));
+  return openWith(wrap, fromB64(slot.iv), fromB64(slot.ct));
+}
+
+// Opens the library: with keys remembered on this device, an invite link, or the password
 async function unlockSite() {
   let box;
   try {
@@ -5356,40 +5373,56 @@ async function unlockSite() {
   } catch { return null; }
 
   try { localStorage.removeItem(OLD_KEY); } catch {}
+  // The data key's id: phones remember the key with it, and notice when it changes (say, after an invite is taken away)
+  const kid = box.kid || box.salt;
   const start = async basicKey => {
     siteKey = basicKey;
     const bundle = await openJson(siteKey, box.iv, box.ct);
     siteStore = localStore(bundle);
     return siteStore;
   };
+  // The password makes a key that either is the data key or opens the copy of it kept for the password (pw)
+  const fromPassword = async text => {
+    const raw = await deriveRaw(text, box.salt, box.iter);
+    return box.pw ? openWith(await aesKey(raw), fromB64(box.pw.iv), fromB64(box.pw.ct)) : raw;
+  };
 
   // Remembered on this device
   const savedB = remembered(SITE_KEY);
-  if (savedB && savedB.salt === box.salt) {
+  if (savedB && savedB.salt === kid) {
     try { return await start(await aesKey(fromB64(savedB.raw))); }
     catch { try { localStorage.removeItem(SITE_KEY); } catch {} }
   }
+  // An invite link just tapped: always remembered, so it's one tap, once
+  let inviteBad = false;
+  if (pendingInvite) {
+    const invite = pendingInvite;
+    pendingInvite = null;
+    try { const raw = await openInvite(box, invite); const store = await start(await aesKey(raw)); remember(SITE_KEY, kid, raw); return store; }
+    catch { inviteBad = true; }
+  }
 
-  // Ask for the password
+  // Ask for the invite link or the password
   const lock = F("lock"), pw = F("lock-pw"), err = F("lock-err"), btn = F("lock-btn");
   lock.hidden = false; F("app").inert = true; document.documentElement.classList.add("locked");
+  if (inviteBad) { err.textContent = "That invite link doesn't work anymore, or part of it is missing. Ask for a new one."; err.hidden = false; }
   pw.focus();
   return new Promise(resolve => {
     F("lock-form").addEventListener("submit", async e => {
       e.preventDefault();
       if (btn.disabled) return;
-      if (!pw.value.trim()) { err.textContent = "Type the password."; err.hidden = false; pw.focus(); return; }
+      if (!pw.value.trim()) { err.textContent = "Paste your invite link, or type the password."; err.hidden = false; pw.focus(); return; }
       err.hidden = true; btn.disabled = true; btn.textContent = "Unlocking…";
-      const keep = F("lock-remember").checked;
+      const keep = F("lock-remember").checked, invite = inviteFrom(pw.value);
       let store = null;
       try {
-        const raw = await deriveRaw(pw.value, box.salt, box.iter);
+        const raw = invite ? await openInvite(box, invite) : await fromPassword(pw.value);
         store = await start(await aesKey(raw));
-        if (keep) remember(SITE_KEY, box.salt, raw);
+        if (keep || invite) remember(SITE_KEY, kid, raw);
       } catch {}
       btn.disabled = false; btn.textContent = "Unlock";
       if (!store) {
-        err.textContent = "That password didn't work. Check it and try again."; err.hidden = false;
+        err.textContent = invite ? "That invite link doesn't work anymore. Ask for a new one." : "That password didn't work. Check it and try again."; err.hidden = false;
         pw.select();
         return;
       }
