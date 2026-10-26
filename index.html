@@ -6,12 +6,11 @@
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
 <title>Train Smart</title>
-<meta name="description" content="Required trainings and memos. Ask your training coordinator for the password.">
+<meta name="description" content="Required trainings and memos. Open it with the invite link or password you were given.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Train Smart">
 <meta property="og:title" content="Train Smart">
-<meta property="og:description" content="Required trainings and memos. Ask your training coordinator for the password.">
-<meta property="og:url" content="https://lastminutedrill.github.io/train-smart/">
+<meta property="og:description" content="Required trainings and memos. Open it with the invite link or password you were given.">
 <meta property="og:image" content="https://lastminutedrill.github.io/train-smart/preview.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -687,9 +686,10 @@ try { var t = JSON.parse(localStorage.getItem("ts:theme") || '"auto"'); if (t ==
     <p class="hint" id="inapp-why"></p>
     <ol class="inapp-steps">
       <li>Tap <b id="inapp-menu">⋮</b> at the top right.</li>
-      <li>Tap <b id="inapp-item">Open in Chrome</b>.</li>
+      <li>Tap <b id="inapp-item">Open in browser</b> <span id="inapp-or">(or Open in Chrome)</span>.</li>
     </ol>
     <p class="hint" id="inapp-carry">Your invite link comes along, so it opens there with nothing to type.</p>
+    <p class="hint" id="inapp-nolink" hidden>If it asks for your invite link there, go back to the message, press and hold the link, tap Copy, and paste it in.</p>
     <button class="btn" id="inapp-copy" type="button">Copy the link instead</button>
     <input id="inapp-link" type="text" readonly hidden aria-label="Train Smart link">
     <p class="hint" id="inapp-copied" role="status" hidden></p>
@@ -5370,34 +5370,52 @@ function localStore(bundle) {
   };
 }
 
-// Invite links: …/#invite=<id>.<secret>, one per member (tools/invite.js). The part after "#" never reaches the web
-// server, and it's taken off the address right away so it doesn't stay in the browser's history. The secret opens this
+// Invite links: …/?invite=<id>.<secret>, one per member (tools/invite.js). Facebook and Messenger keep the part after
+// "?" (they dropped an older "#invite=" form, which still works), and add their own "fbclid" after it, which is ignored.
+// The invite is taken off the address right away so it doesn't stay in the browser's history. The secret opens this
 // member's copy of the data key in data.enc (inv[id]). A pasted link (or just <id>.<secret>) works the same way.
-const inviteFrom = s => { const m = String(s || "").trim().match(/(?:^|#invite=)([A-Za-z0-9]{6,16})\.([A-Za-z0-9_-]{16,64})$/); return m ? { id: m[1], secret: m[2] } : null; };
+const inviteFrom = s => {
+  const t = String(s || "").trim();
+  const m = t.match(/[#?&]invite=([A-Za-z0-9]{6,16})\.([A-Za-z0-9_-]{16,64})(?![A-Za-z0-9_-])/) || t.match(/^([A-Za-z0-9]{6,16})\.([A-Za-z0-9_-]{16,64})$/);
+  return m ? { id: m[1], secret: m[2] } : null;
+};
 // Links tapped in Facebook, Messenger or Instagram open in that app's own browser, which can lose what's saved and
 // can't add Train Smart to the home screen. There the link stays in the address, so the app's "Open in browser"
-// brings it along, and the member is shown how before anything else (inAppNotice).
+// brings it along, and the member is shown how before anything else (inAppNotice). Messenger on Android calls
+// itself "Orca".
 const inAppName = () => {
   const ua = navigator.userAgent;
-  return /Messenger|FB_IAB\/MESSENGER/i.test(ua) ? "Messenger" : /Instagram/.test(ua) ? "Instagram" : /FBAN|FBAV|FB_IAB|FB4A|FBIOS/.test(ua) ? "Facebook" : "";
+  return /Messenger|Orca/i.test(ua) ? "Messenger" : /Instagram/.test(ua) ? "Instagram" : /FBAN|FBAV|FB_IAB|FB4A|FBIOS/.test(ua) ? "Facebook" : "";
 };
-const dropLinkHash = () => { try { history.replaceState(null, "", location.pathname + location.search); } catch {} };
-let pendingInvite = null;
-if (/^#invite=/.test(location.hash)) {
-  pendingInvite = inviteFrom(location.hash);
-  if (!inAppName()) dropLinkHash();
+// Takes the invite (or a progress link) and Facebook's fbclid off the address, keeping anything else
+const cleanAddress = () => {
+  try {
+    const q = new URLSearchParams(location.search);
+    q.delete("invite"); q.delete("fbclid");
+    history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : ""));
+  } catch {}
+};
+let pendingInvite = null, inviteCut = false;
+if (/[#?&]invite=/.test(location.search + location.hash)) {
+  pendingInvite = inviteFrom(location.search + location.hash);
+  // There, but part of it is missing
+  inviteCut = !pendingInvite;
+  if (!inAppName()) cleanAddress();
 }
 // Shown once, before unlocking, in another app's browser on a device that hasn't opened Train Smart there before
 function inAppNotice() {
   const app = inAppName();
   if (!app) return Promise.resolve();
-  if (remembered(SITE_KEY)) { dropLinkHash(); return Promise.resolve(); }
+  if (remembered(SITE_KEY)) { cleanAddress(); return Promise.resolve(); }
   const ios = isIos(), b = ios ? "Safari" : "Chrome";
   F("inapp-title").textContent = `Open this in ${b}`;
   F("inapp-why").textContent = `You're in ${app}'s own browser. It can lose what you save, and it can't add Train Smart to your home screen.`;
-  F("inapp-menu").textContent = ios ? "⋯" : "⋮";
-  F("inapp-item").textContent = ios ? "Open in external browser" : "Open in Chrome";
+  // The menu is ⋯ at the top right in all three (checked in Messenger on Android, Oct 26); its wording varies
+  F("inapp-menu").textContent = "⋯";
+  F("inapp-item").textContent = ios ? "Open in external browser" : "Open in browser";
+  F("inapp-or").textContent = ios ? "(or Open in Safari)" : "(or Open in Chrome)";
   F("inapp-carry").hidden = !pendingInvite;
+  F("inapp-nolink").hidden = !!pendingInvite;
   const box = F("inapp"), link = F("inapp-link"), said = F("inapp-copied");
   box.hidden = false; F("app").inert = true; document.documentElement.classList.add("locked");
   F("inapp-copy").addEventListener("click", async () => {
@@ -5412,7 +5430,7 @@ function inAppNotice() {
   return new Promise(resolve => {
     F("inapp-stay").addEventListener("click", () => {
       box.hidden = true; link.value = ""; F("app").inert = false; document.documentElement.classList.remove("locked");
-      dropLinkHash();
+      cleanAddress();
       resolve();
     }, { once: true });
   });
@@ -5484,6 +5502,7 @@ async function unlockSite() {
   const lock = F("lock"), pw = F("lock-pw"), err = F("lock-err"), btn = F("lock-btn");
   lock.hidden = false; F("app").inert = true; document.documentElement.classList.add("locked");
   if (inviteBad) { err.textContent = "That invite link doesn't work anymore, or part of it is missing. Ask for a new one."; err.hidden = false; }
+  else if (inviteCut) { err.textContent = "Part of your invite link is missing. Go back to the message, press and hold the link, tap Copy, and paste it here."; err.hidden = false; }
   else if (lockedAgain) { err.textContent = "Train Smart was locked on this phone. Tap your invite link again, or paste it here."; err.hidden = false; }
   pw.focus();
   return new Promise(resolve => {
@@ -5769,7 +5788,7 @@ async function bringInProgress(text) {
 let pendingMove = null;
 if (location.hash.startsWith("#move=")) {
   pendingMove = location.hash;
-  if (!inAppName()) dropLinkHash();
+  if (!inAppName()) cleanAddress();
 }
 function takePendingMove() {
   if (!pendingMove) return;

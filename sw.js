@@ -1,6 +1,6 @@
 // Train Smart offline copy. Pages and data come from the network first, so updates show right away;
 // the saved copy (still encrypted) is used only when there's no connection.
-const CACHE = "train-smart-ff84fa33c6ff";
+const CACHE = "train-smart-80a2423f8b75";
 const SHELL = ["./", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "icon.svg", "data.enc"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -32,7 +32,8 @@ self.addEventListener("fetch", e => {
   if (url.origin === location.origin) {
     // "no-cache" asks GitHub whether the file changed, instead of reusing a copy for up to 10 minutes
     e.respondWith(fetch(new Request(req, { cache: "no-cache" })).then(res => {
-      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
+      // A page opened from an invite link is saved as the plain page, so the invite isn't kept in the saved copy
+      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req.mode === "navigate" && url.search ? new URL("./", self.registration.scope).href : req, copy)); }
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: true }).then(hit => hit || (req.mode === "navigate" ? caches.match("./") : Response.error()))));
   } else if (url.hostname === "cdnjs.cloudflare.com") {
