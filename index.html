@@ -542,6 +542,12 @@ svg{flex:none}
 .rec-item + .rec-item{border-top:1px solid var(--line)}
 .rec-item b{overflow-wrap:anywhere}
 .rec-item .rec-sub{grid-column:1; font-size:14px; color:var(--muted); overflow-wrap:anywhere}
+.rec-open{grid-column:1; grid-row:1 / span 2; display:grid; gap:4px; min-width:0; margin:-6px 0 -6px -8px; padding:6px 8px; border:0; border-radius:8px; background:transparent; color:inherit; font:inherit; text-align:left; cursor:pointer}
+.rec-open:hover{background:var(--sunken)}
+.ro-chev{width:16px; height:16px; margin-left:4px; vertical-align:-3px; color:var(--muted)}
+.rec-open .rec-sub{font-size:14px; color:var(--muted); overflow-wrap:anywhere}
+.cp-top{display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px}
+.cp-name{margin:0; font-size:22px; font-weight:800}
 .rec-acts{grid-column:2; grid-row:1 / span 2; display:flex; flex-direction:column; align-items:flex-end; gap:2px}
 .rec-acts .link-btn{min-height:40px}
 .rec-name-row{display:grid; gap:6px}
@@ -3674,6 +3680,8 @@ const REC_PAGES = { tools: "Record tools", reqs: "Requirements", certs: "Certifi
   backup: "Download backup", restore: "Restore from backup", pin: "App lock & PIN", career: "Career record & status card", find: "Find my certificates",
   faq: "Questions and answers", calendar: "Calendar reminders" };
 const recPage = () => S.recStack[S.recStack.length - 1] || null;
+// A certification's own page is "cert:<id>", titled with its name
+const recTitle = page => page && page.startsWith("cert:") ? ((S.certs[page.slice(5)] || {}).name || "Certification") : REC_PAGES[page];
 // The year the overview and Hours breakdown show hours for (this year unless the member picks another)
 const recYear = () => S.recYear || new Date().getFullYear();
 // Hours as a plain number, for the tiles ("25.75")
@@ -3683,11 +3691,11 @@ const emsMemberNow = () => !S.roles || S.roles.some(g => ["ems", "als", "fsp"].i
 function renderRecordHead() {
   const page = recPage();
   resetHead();
-  F("vh-title").textContent = page ? REC_PAGES[page] : VIEW_LABEL.record;
+  F("vh-title").textContent = page ? recTitle(page) : VIEW_LABEL.record;
   if (page) {
     const prev = S.recStack[S.recStack.length - 2];
     F("vh-back").hidden = false;
-    F("vh-back").setAttribute("aria-label", "Back to " + (prev ? REC_PAGES[prev] : VIEW_LABEL.record));
+    F("vh-back").setAttribute("aria-label", "Back to " + (prev ? recTitle(prev) : VIEW_LABEL.record));
   }
   F("search-btn").hidden = true; F("filter-btn").hidden = true;
   F("searchbox").hidden = true; F("filter-note").hidden = true; F("setup-slot").replaceChildren();
@@ -3717,8 +3725,8 @@ function recordChildren() {
   if (!S.uid || !S.db) return [h("div", { class: "notice" }, "Sign in to Claude to keep your training record.")];
   const pages = { tools: toolsPage, reqs: reqsPage, certs: certsPage, extras: extrasPage, hours: hoursPage, backup: () => [backupCard(backupState())],
     restore: restorePage, pin: () => [lockCard()], career: careerPage, find: findPage, faq: () => [faqCard()], calendar: calendarPage };
-  const page = recPage();
-  return [h("div", { class: "rec" }, (pages[page] || recordOverview)())];
+  const page = recPage(), certId = page && page.startsWith("cert:") ? page.slice(5) : null;
+  return [h("div", { class: "rec" }, (certId ? () => certPage(certId) : pages[page] || recordOverview)())];
 }
 
 // A row on a menu: icon, title, an optional second line, and a chevron. pageRow opens one of My record's pages.
@@ -3829,7 +3837,7 @@ function certSummary(certs) {
   const st = certState(main), badge = st.key === "ok" ? "Current" : st.key === "warn" ? "Renew soon" : "Expired";
   return h("ul", { class: "menu cert-sum", "aria-label": "Your certification" },
     pageRow(icoAward(), h("b", null, main.name), h("span", { class: "cs-line" }, h("span", { class: "badge b-" + st.key }, badge),
-      h("small", null, main.expires ? `${st.key === "bad" ? "Expired" : "Expires"} ${regDate(main.expires)}` : "No expiration date")), "certs"));
+      h("small", null, main.expires ? `${st.key === "bad" ? "Expired" : "Expires"} ${regDate(main.expires)}` : "No expiration date")), "cert:" + main.id));
 }
 // GM#26-001: every EMS provider sends their status report to EMS Training by the end of January and of July. One row
 // says when it was last sent and when the next is due; it opens to record a send.
@@ -3915,13 +3923,46 @@ function certsPage() {
     certs.length ? h("ul", { class: "rec-list" }, certs.map(c => {
       const st = certState(c);
       return h("li", { class: "rec-item" },
-        h("b", null, c.name, c.number ? h("span", { class: "rec-muted" }, ` · #${c.number}`) : null),
-        h("span", { class: "rec-sub" }, h("span", { class: "st-" + st.key }, st.label),
-          c.issued ? ` · issued ${regDate(c.issued)}` : "", c.via === "registry" ? " · from your EMS Registry status report" : c.via === "certificate" ? " · read from the card" : ""),
+        h("button", { class: "rec-open", type: "button", "data-key": "rp:cert:" + c.id, onclick: () => recGo("cert:" + c.id) },
+          h("b", null, c.name, c.number ? h("span", { class: "rec-muted" }, ` · #${c.number}`) : null, cls(icoChev(), "ro-chev")),
+          h("span", { class: "rec-sub" }, h("span", { class: "st-" + st.key }, st.label),
+            c.issued ? ` · issued ${regDate(c.issued)}` : "", c.via === "registry" ? " · from your EMS Registry status report" : c.via === "certificate" ? " · read from the card" : "")),
         h("span", { class: "rec-acts" },
           c.proof ? h("button", { class: "link-btn", type: "button", "data-key": "pv:" + c.id, onclick: () => openProof(c.proof) }, "View card") : null,
           h("button", { class: "link-btn", type: "button", "data-key": "ed:" + c.id, onclick: () => openRec("cert", c.id) }, "Edit")));
     })) : h("p", { class: "rec-muted" }, "None yet. Add your EMT card, CPR card and others, and you'll get a heads-up before one runs out. Reading your EMS Registry status report adds your EMS certification for you."),
+    h("ul", { class: "menu" }, pageRow(icoHelp(), "Find my certificates", "Where to download each kind of card", "find"),
+      pageRow(icoClock(), "Add expirations to my calendar", "Reminders 90, 60, 30 and 7 days before", "calendar"))];
+}
+
+// One certification on its own page: its dates, number and where it came from, its card, and for the EMS
+// certification the hours this registration needs to renew it
+function certPage(id) {
+  const c = certList().find(x => x.id === id);
+  if (!c) return [h("p", { class: "rec-muted" }, "This certification isn't in your record anymore.")];
+  const st = certState(c), badge = st.key === "ok" ? "Current" : st.key === "warn" ? "Renew soon" : "Expired";
+  const main = emsCertRecord(), ems = !!main && main.id === c.id;
+  const rows = [
+    ["Expires", c.expires ? regDate(c.expires) : "No expiration date"],
+    c.issued ? ["Issued", regDate(c.issued)] : null,
+    c.number ? ["Number", "#" + c.number] : null,
+    ["Came from", c.via === "registry" ? "Your EMS Registry status report" : c.via === "certificate" ? "Read from the card" : "Added by you"]].filter(Boolean);
+  const cyc = ems ? S.targets.filter(targetApplies).filter(t => t.kind === "hours" && t.per === "cycle") : [], cy = ems ? cycleOf(c) : null;
+  return [
+    h("section", { class: "card", "aria-labelledby": "cp-name" },
+      h("div", { class: "card-body" },
+        h("div", { class: "cp-top" }, h("h2", { id: "cp-name", class: "cp-name" }, c.name), h("span", { class: "badge b-" + st.key }, badge)),
+        // The badge and the Expires row say it when it's current; a countdown or an expiry gets its own line
+        st.key === "ok" ? null : h("p", { class: "st-" + st.key }, st.label),
+        h("dl", { class: "kv" }, rows.map(([k, v]) => h("div", null, h("dt", null, k), h("dd", null, v)))),
+        h("div", { class: "page-acts" },
+          c.proof ? h("button", { class: "btn", type: "button", "data-key": "cp-card", onclick: () => openProof(c.proof) }, "View card") : null,
+          h("button", { class: "btn", type: "button", "data-key": "cp-edit", onclick: () => openRec("cert", c.id) }, "Edit")),
+        ems && c.via === "registry" ? h("p", { class: "rec-muted" }, "Reading a newer status report updates it.") : null)),
+    cyc.length && cy ? h("section", { class: "card", "aria-labelledby": "cp-cy" },
+      h("div", { class: "card-hd" }, h("h2", { id: "cp-cy" }, "Hours to renew it"), h("span", null, `Ends ${regDate(cy.end)}`)),
+      cyc.map(progRow),
+      h("div", { class: "card-ft" }, h("button", { class: "more-link", type: "button", "data-key": "rp:reqs", onclick: () => recGo("reqs") }, "View requirements", icoArrow()))) : null,
     h("ul", { class: "menu" }, pageRow(icoHelp(), "Find my certificates", "Where to download each kind of card", "find"),
       pageRow(icoClock(), "Add expirations to my calendar", "Reminders 90, 60, 30 and 7 days before", "calendar"))];
 }
@@ -4328,6 +4369,7 @@ async function deleteRec() {
   try {
     await retry(() => S.db.collection("data/users/" + S.uid).doc(id).delete());
     closeBs("rec-sheet"); S.recEdit = null;
+    if (recPage() === "cert:" + id) recBack();
     toast("Deleted.", old ? { label: "Undo", fn: () => S.db.collection("data/users/" + S.uid).doc(id).set(old).then(() => toast("Undone.")).catch(() => {}) } : null);
   } catch (err) { const el = F("rf-err"); el.textContent = errText(err, "That wasn't deleted."); el.hidden = false; }
 }
