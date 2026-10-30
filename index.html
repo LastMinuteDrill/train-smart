@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; manifest-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob: 'wasm-unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; manifest-src 'self'">
 <title>Train Smart</title>
 <meta name="description" content="Required trainings and memos. Open it with the invite link or password you were given.">
 <meta property="og:type" content="website">
@@ -2733,7 +2733,7 @@ function parseStatusReportLoose(t) {
 }
 async function pdfText(file) {
   const lib = await loadPdfJs();
-  const pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false }).promise;
+  const pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
   const pages = [];
   for (let n = 1; n <= pdf.numPages; n++) {
     // Where each piece of text sits as the page is shown (a page can be stored turned sideways, like 2026 FEMA certificates)
@@ -4671,8 +4671,10 @@ const libCache = {};
 const LIB_SRI = {
   "jszip/3.10.1/jszip.min.js": "sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==",
   "jspdf/2.5.1/jspdf.umd.min.js": "sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==",
-  "pdf.js/3.11.174/pdf.min.js": "sha512-q+4liFwdPC/bNdhUpZx6aXDx/h77yEQtn4I1slHydcbZK34nLaR3cAeYSJshoxIOq3mjEf7xJE8YWIUHMn+oCQ==",
-  "pdf.js/3.11.174/pdf.worker.min.js": "sha512-BbrZ76UNZq5BhH7LL7pn9A4TKQpQeNCHOo65/akfelcIBbcVvYWOFQKPXIrykE3qZxYjmDX573oa4Ywsc7rpTw==",
+  // pdf.js: cdnjs lists no fingerprints for these module files, so these were taken from the files themselves after
+  // checking they're byte for byte the official pdfjs-dist 5.7.284 release (Oct 30, 2026)
+  "pdf.js/5.7.284/pdf.min.mjs": "sha512-sRUAAhGbgEGFonLpUv0NFL4w229oHKlLY+KQODXuivAVfAt9Mm1r5+QEGysxnE/nMYDfdn8TQp5si9beuGSGTA==",
+  "pdf.js/5.7.284/pdf.worker.min.mjs": "sha512-wVS4+in4RshRJOcD7EkcjKi6zTDRVP2KHdAYP2qokT5A1kMU209Hb2kEJWqG8Ml4objfQ+IZmVM3DfLYLi1J7A==",
 };
 function scriptTag(src) {
   const s = document.createElement("script"), sri = LIB_SRI[src.replace("https://cdnjs.cloudflare.com/ajax/libs/", "")];
@@ -5060,19 +5062,33 @@ async function downloadRecord() {
 }
 
 /* ---------- PDF viewer ---------- */
-const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+// pdf.js 5.7, the newest that still runs on iPhones with iOS 16.4 (6.x needs iOS 18). It comes as modules, so each file
+// is fetched, checked against its fingerprint, and run from that checked copy (a blob: address), never straight from
+// the CDN. The worker then reads PDFs off the page where the browser allows it (smoother on a phone); where it can't,
+// pdf.js runs it on the page.
+const PDFJS_VERSION = "5.7.284", PDFJS = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/`;
 let pdfjsReady = null, viewerToken = 0;
+async function checkedCopy(file) {
+  let res;
+  try { res = await fetch(PDFJS + file, { integrity: LIB_SRI[`pdf.js/${PDFJS_VERSION}/${file}`], mode: "cors", credentials: "omit" }); }
+  catch { throw libError(); }
+  if (!res.ok) throw libError();
+  return URL.createObjectURL(new Blob([await res.arrayBuffer()], { type: "text/javascript" }));
+}
 function loadPdfJs() {
   if (pdfjsReady) return pdfjsReady;
-  const add = src => new Promise((res, rej) => {
-    const s = scriptTag(src); s.onload = res; s.onerror = () => rej(libError());
-    document.head.appendChild(s);
-  });
-  // Loading the worker as a plain script lets pdf.js render on the page itself
-  pdfjsReady = add(PDFJS + "pdf.min.js").then(() => add(PDFJS + "pdf.worker.min.js")).then(() => {
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js";
-    return window.pdfjsLib;
-  });
+  pdfjsReady = (async () => {
+    const [main, worker] = await Promise.all([checkedCopy("pdf.min.mjs"), checkedCopy("pdf.worker.min.mjs")]);
+    let lib;
+    try { lib = await import(main); lib.GlobalWorkerOptions.workerSrc = worker; }
+    catch {
+      // A page that can't run a blob: copy (the Claude page may not allow it) loads it from the CDN directly; the
+      // members' site allows the checked copy, so it never gets here
+      try { lib = await import(PDFJS + "pdf.min.mjs"); lib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.mjs"; }
+      catch { throw libError(); }
+    }
+    return lib;
+  })();
   pdfjsReady.catch(() => { pdfjsReady = null; });
   return pdfjsReady;
 }
@@ -5111,7 +5127,7 @@ async function openPdf(p) {
 
 async function drawPdfPages(body, bytes, token) {
   const lib = await loadPdfJs();
-  const pdf = await lib.getDocument({ data: bytes, isEvalSupported: false }).promise;
+  const pdf = await lib.getDocument({ data: bytes }).promise;
   if (token !== viewerToken) return;
   body.replaceChildren();
   const width = Math.max(240, Math.min(body.clientWidth - 32, 880));
