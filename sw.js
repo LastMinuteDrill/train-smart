@@ -1,6 +1,6 @@
 // Train Smart offline copy. Pages and data come from the network first, so updates show right away;
 // the saved copy (still encrypted) is used only when there's no connection.
-const CACHE = "train-smart-f9d0c6cd777a";
+const CACHE = "train-smart-d7556ad04029";
 const SHELL = ["./", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "icon.svg", "data.enc"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -39,7 +39,8 @@ self.addEventListener("fetch", e => {
   } else if (url.hostname === "cdnjs.cloudflare.com") {
     // The PDF viewer library never changes at a given version, so the saved copy is used first
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
-      const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy));
+      // Only a good copy is kept (the page also checks each library's fingerprint before it runs)
+      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
       return res;
     })));
   }

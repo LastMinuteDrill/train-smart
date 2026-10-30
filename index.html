@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; manifest-src 'self'">
 <title>Train Smart</title>
 <meta name="description" content="Required trainings and memos. Open it with the invite link or password you were given.">
 <meta property="og:type" content="website">
@@ -34,17 +35,16 @@
    rest). Bottom nav on phones. From 900 px wide the nav moves into the header, and the list sits on the left with the
    selected training's details on the right. */
 :root{
-  --bg:#F3F5F8; --surface:#FFFFFF; --sunken:#EBEEF2; --ink:#13202D; --muted:#566476; --line:#DCE2E8; --line-strong:#AFBAC6;
-  --accent:#F6CB46; --accent-ink:#1B1607; --accent-soft:#FDF4D6; --link:#13202D; --mark:#FCE38A; --swipe:#13202D; --nav-on:#13202D;
-  --late:#A3281F; --late-bg:#FCE8E5; --pill-late:#FAD9D4; --pill-late-ink:#8E2119; --soon:#8A4A06; --soon-bg:#FCF0E2;
-  --done:#1D6B46; --done-bg:#E2F3E9; --on-done:#FFFFFF; --warn-bg:#FDF4D6; --warn-line:#E8C14E; --warn-ink:#6B4E00;
-  --focus:#2356C4; --scrim:rgba(12,17,24,.45); --paper:#FFFFFF; --shadow:0 8px 30px rgba(16,24,36,.14); --toast-act:#F6CB46;
   --font:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
 }
+/* Colors: dark first (the phone's dark mode, Claude's dark theme, or the page's own Dark setting), light last, so the
+   page's own Light setting wins over a dark phone or a dark Claude theme. Plain :root ranks below the dark rules, so
+   it only applies when nothing asks for dark. --line-strong is the edge of fields, buttons and the Mark done box
+   (3:1 against the background in both themes, so they show in sunlight). */
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#10171F; --surface:#1A2531; --sunken:#24313F; --ink:#F3F6F9; --muted:#9DABBB; --line:#2B3947; --line-strong:#435466;
+    --bg:#10171F; --surface:#1A2531; --sunken:#24313F; --ink:#F3F6F9; --muted:#9DABBB; --line:#2B3947; --line-strong:#718396;
     --accent:#F6CB46; --accent-ink:#1B1607; --accent-soft:#332D1C; --link:#F6CB46; --mark:rgba(246,203,70,.35); --swipe:#F6CB46; --nav-on:#F6CB46;
     --late:#FF9F93; --late-bg:rgba(255,128,112,.13); --pill-late:#F49A8E; --pill-late-ink:#2A0D09; --soon:#F6B47A; --soon-bg:rgba(246,180,122,.14);
     --done:#7FDDB0; --done-bg:rgba(127,221,176,.13); --on-done:#0D1F15; --warn-bg:rgba(246,203,70,.11); --warn-line:#A88A2E; --warn-ink:#F6CB46;
@@ -52,30 +52,21 @@
     color-scheme:dark;
   }
 }
-:root[data-theme="dark"]{
-  --bg:#10171F; --surface:#1A2531; --sunken:#24313F; --ink:#F3F6F9; --muted:#9DABBB; --line:#2B3947; --line-strong:#435466;
+:root[data-theme="dark"],:root[data-ts-theme="dark"]{
+  --bg:#10171F; --surface:#1A2531; --sunken:#24313F; --ink:#F3F6F9; --muted:#9DABBB; --line:#2B3947; --line-strong:#718396;
   --accent:#F6CB46; --accent-ink:#1B1607; --accent-soft:#332D1C; --link:#F6CB46; --mark:rgba(246,203,70,.35); --swipe:#F6CB46; --nav-on:#F6CB46;
   --late:#FF9F93; --late-bg:rgba(255,128,112,.13); --pill-late:#F49A8E; --pill-late-ink:#2A0D09; --soon:#F6B47A; --soon-bg:rgba(246,180,122,.14);
   --done:#7FDDB0; --done-bg:rgba(127,221,176,.13); --on-done:#0D1F15; --warn-bg:rgba(246,203,70,.11); --warn-line:#A88A2E; --warn-ink:#F6CB46;
   --focus:#8EB1FF; --scrim:rgba(0,0,0,.6); --paper:#FFFFFF; --shadow:0 10px 34px rgba(0,0,0,.5); --toast-act:#6B4E00;
   color-scheme:dark;
 }
-/* The page's own theme setting (data-ts-theme) wins over Claude's theme; these come last so they take priority */
-:root[data-ts-theme="light"]{
-  --bg:#F3F5F8; --surface:#FFFFFF; --sunken:#EBEEF2; --ink:#13202D; --muted:#566476; --line:#DCE2E8; --line-strong:#AFBAC6;
+:root,:root[data-ts-theme="light"]{
+  --bg:#F3F5F8; --surface:#FFFFFF; --sunken:#EBEEF2; --ink:#13202D; --muted:#566476; --line:#DCE2E8; --line-strong:#7A8796;
   --accent:#F6CB46; --accent-ink:#1B1607; --accent-soft:#FDF4D6; --link:#13202D; --mark:#FCE38A; --swipe:#13202D; --nav-on:#13202D;
   --late:#A3281F; --late-bg:#FCE8E5; --pill-late:#FAD9D4; --pill-late-ink:#8E2119; --soon:#8A4A06; --soon-bg:#FCF0E2;
   --done:#1D6B46; --done-bg:#E2F3E9; --on-done:#FFFFFF; --warn-bg:#FDF4D6; --warn-line:#E8C14E; --warn-ink:#6B4E00;
   --focus:#2356C4; --scrim:rgba(12,17,24,.45); --paper:#FFFFFF; --shadow:0 8px 30px rgba(16,24,36,.14); --toast-act:#F6CB46;
   color-scheme:light;
-}
-:root[data-ts-theme="dark"]{
-  --bg:#10171F; --surface:#1A2531; --sunken:#24313F; --ink:#F3F6F9; --muted:#9DABBB; --line:#2B3947; --line-strong:#435466;
-  --accent:#F6CB46; --accent-ink:#1B1607; --accent-soft:#332D1C; --link:#F6CB46; --mark:rgba(246,203,70,.35); --swipe:#F6CB46; --nav-on:#F6CB46;
-  --late:#FF9F93; --late-bg:rgba(255,128,112,.13); --pill-late:#F49A8E; --pill-late-ink:#2A0D09; --soon:#F6B47A; --soon-bg:rgba(246,180,122,.14);
-  --done:#7FDDB0; --done-bg:rgba(127,221,176,.13); --on-done:#0D1F15; --warn-bg:rgba(246,203,70,.11); --warn-line:#A88A2E; --warn-ink:#F6CB46;
-  --focus:#8EB1FF; --scrim:rgba(0,0,0,.6); --paper:#FFFFFF; --shadow:0 10px 34px rgba(0,0,0,.5); --toast-act:#6B4E00;
-  color-scheme:dark;
 }
 *,*::before,*::after{box-sizing:border-box}
 html.locked{overflow:hidden}
@@ -130,7 +121,7 @@ svg{flex:none}
 .searchbox input:focus{outline:none; border-color:var(--focus); box-shadow:0 0 0 3px color-mix(in srgb,var(--focus) 22%,transparent)}
 .filter-note{margin:10px 0 0; display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; font-size:14px; color:var(--muted)}
 .filter-note b{color:var(--ink); font-weight:600}
-.link-btn{background:none; border:0; padding:6px 2px; min-height:36px; color:var(--ink); font-weight:600; font-size:14px; text-decoration:underline; text-decoration-color:var(--accent); text-decoration-thickness:2px; text-underline-offset:3px; cursor:pointer; text-align:left}
+.link-btn{background:none; border:0; padding:6px 2px; min-height:44px; color:var(--ink); font-weight:600; font-size:14px; text-decoration:underline; text-decoration-color:var(--accent); text-decoration-thickness:2px; text-underline-offset:3px; cursor:pointer; text-align:left}
 .more-link{display:inline-flex; align-items:center; gap:6px; min-height:44px; padding:0 6px; border:0; background:none; color:var(--link); font-size:15px; font-weight:700; cursor:pointer; text-decoration:underline; text-decoration-color:var(--accent); text-decoration-thickness:2px; text-underline-offset:4px; border-radius:8px}
 .more-link svg{width:16px; height:16px}
 
@@ -258,7 +249,7 @@ svg{flex:none}
 .btn.danger{background:var(--late); border-color:var(--late); color:var(--surface)}
 .btn.danger-ghost{background:transparent; border-color:transparent; color:var(--late)}
 .btn.danger-ghost:hover{background:var(--late-bg)}
-.btn.sm{min-height:36px; padding:6px 12px; font-size:14px}
+.btn.sm{min-height:44px; padding:8px 14px; font-size:14px}
 .btn.big{min-height:52px; padding:12px 20px; font-size:17px; border-radius:12px}
 .btn.block{display:flex; width:100%}
 .btn:disabled{opacity:.55; cursor:default}
@@ -424,7 +415,7 @@ svg{flex:none}
 
 /* Toast: above the bottom nav */
 .toast{position:fixed; left:50%; bottom:calc(76px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); z-index:40; width:max-content; max-width:calc(100% - 32px); display:flex; align-items:center; gap:14px; background:var(--ink); color:var(--bg); padding:10px 10px 10px 16px; border-radius:12px; font-size:15px; font-weight:600; box-shadow:var(--shadow)}
-.toast button{background:none; border:0; color:var(--toast-act); font-weight:800; font-size:15px; min-height:36px; padding:0 8px; cursor:pointer; border-radius:8px; text-decoration:underline; text-underline-offset:3px}
+.toast button{background:none; border:0; color:var(--toast-act); font-weight:800; font-size:15px; min-height:44px; padding:0 8px; cursor:pointer; border-radius:8px; text-decoration:underline; text-underline-offset:3px}
 
 /* Narrow phones */
 @media (max-width:359px){
@@ -549,8 +540,10 @@ svg{flex:none}
 .cp-top{display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px}
 .cp-name{margin:0; font-size:22px; font-weight:800}
 .rec-acts{grid-column:2; grid-row:1 / span 2; display:flex; flex-direction:column; align-items:flex-end; gap:2px}
-.rec-acts .link-btn{min-height:40px}
+.rec-acts .link-btn{min-height:44px}
 .rec-name-row{display:grid; gap:6px}
+.bk-groups{display:flex; align-items:center; gap:10px; min-height:44px; font-size:15px; cursor:pointer}
+.bk-groups input{width:20px; height:20px; accent-color:var(--done)}
 .rec-name-row label{font-weight:700; font-size:15px}
 .rec-form .rf{display:grid; gap:6px}
 .rec-form .rf label{font-weight:700; font-size:15px}
@@ -1002,7 +995,7 @@ try { var t = JSON.parse(localStorage.getItem("ts:theme") || '"auto"'); if (t ==
           <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
           <li>Tap <b>Add</b>.</li>
         </ol>
-        <p class="install-note">The home screen app keeps its own sign-in, so enter the password once more the first time you open it.</p>
+        <p class="install-note">The home screen app keeps its own sign-in. The first time you open it, paste your invite link (or type the password) once more.</p>
         <p class="install-note">It also keeps its own record, separate from Safari. If you've used Train Smart in Safari, back up first (My record, Record tools, Download backup), then open the app and use Restore from backup.</p>
       </section>
       <section id="install-android">
@@ -1050,7 +1043,7 @@ try { var t = JSON.parse(localStorage.getItem("ts:theme") || '"auto"'); if (t ==
     <div class="bs-body">
       <section class="move-sec">
         <h3 class="install-h">Send from this device</h3>
-        <p>Send yourself this link, then open it on your other phone or computer. Your checkmarks are added to what's there, and your groups are copied over. The link only works with the Train Smart password.</p>
+        <p>Send yourself this link, then open it on your other phone or computer. You'll be asked before anything is added there. The link only opens where Train Smart is already open, and it stops working when the site's lock changes, so use it soon.</p>
         <p class="move-sum" id="move-sum"></p>
         <div class="move-acts">
           <button class="btn primary" id="move-share" type="button" hidden>Share link</button>
@@ -1070,7 +1063,8 @@ try { var t = JSON.parse(localStorage.getItem("ts:theme") || '"auto"'); if (t ==
   </div>
 </div>
 
-<div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toast-msg"></span><button type="button" id="toast-act" hidden></button></div>
+<div class="toast" id="toast" hidden><span id="toast-msg"></span><button type="button" id="toast-act" hidden></button></div>
+<div class="sr" id="toast-live" role="status" aria-live="polite"></div>
 
 <script>
 (() => {
@@ -1146,7 +1140,7 @@ const S = {
   // The training a certificate is being read for, when the reader was opened from its details
   certFor: null,
   recStack: [], recOpeners: [], recPushed: 0, recYear: null, rsOpen: false, recScroll: 0,
-  // Members' site only: { safariTab(), addToHomeScreen(), lockDevice() }
+  // Members' site only: { safariTab(), addToHomeScreen(), lockDevice() (Sign out on this device) }
   site: null,
 };
 // The first visit on a device starts the clock, so the whole library doesn't show up as new
@@ -1207,6 +1201,8 @@ const pad = n => String(n).padStart(2, "0");
 const isoOf = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const today = () => isoOf(new Date());
 // Dates are stored as YYYY-MM-DD and read as local calendar days, so there's no timezone shift
+// The same date n days later (or earlier), at midnight; never an hour off across daylight saving
+const shiftDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 function parseISO(s) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || "");
   if (!m) return null;
@@ -1221,8 +1217,8 @@ function fmtDate(s) {
 // A training's length in hours ("30 min" is 0.5, "1 hour" is 1), or null when it isn't given
 function hoursOf(it) {
   const s = String((it && it.duration) || "").toLowerCase();
-  const hr = s.match(/(\d+(?:\.\d+)?)\s*(?:h|hrs?|hours?)\b/), min = s.match(/(\d+)\s*(?:m|mins?|minutes?)\b/);
-  const n = (hr ? +hr[1] : 0) + (min ? +min[1] / 60 : 0);
+  const hr = s.match(/(\d*[.,]?\d+)\s*(?:h|hrs?|hours?)\b/), min = s.match(/(\d+)\s*(?:m|mins?|minutes?)\b/);
+  const n = (hr ? +hr[1].replace(",", ".") : 0) + (min ? +min[1] / 60 : 0);
   return n > 0 ? Math.round(n * 100) / 100 : null;
 }
 // Hours logged for a finished training: what the member saved, or else the training's length
@@ -1294,7 +1290,7 @@ function hl(text, terms) {
   return frag;
 }
 
-let toastTimer, toastFn = null;
+let toastTimer, toastFn = null, toastLeft = 0, toastFrom = 0;
 function toast(msg, action) {
   F("toast-msg").textContent = msg;
   const b = F("toast-act");
@@ -1302,9 +1298,15 @@ function toast(msg, action) {
   b.hidden = !action;
   if (action) b.textContent = action.label;
   F("toast").hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { F("toast").hidden = true; toastFn = null; }, action ? 7000 : 3400);
+  // Screen readers hear it from a spot that's always on the page (one that appears with its box can be missed)
+  const live = F("toast-live"); live.textContent = "";
+  setTimeout(() => { live.textContent = msg + (action ? ` ${action.label} is at the bottom of the screen.` : ""); }, 60);
+  toastLeft = action ? 10000 : 3400;
+  runToast();
 }
+// The message stays while a finger, mouse or keyboard is on it, so Undo can't run out while it's being reached for
+function runToast() { clearTimeout(toastTimer); toastFrom = Date.now(); toastTimer = setTimeout(() => { F("toast").hidden = true; toastFn = null; }, toastLeft); }
+function holdToast() { if (F("toast").hidden) return; clearTimeout(toastTimer); toastLeft = Math.max(2000, toastLeft - (Date.now() - toastFrom)); }
 async function retry(fn) {
   try { return await fn(); }
   catch (e) {
@@ -1396,7 +1398,7 @@ function memoDeadline(it) {
 
 // Where a completion came from, strongest first: the EMS Registry (the official record), then a certificate (read here,
 // or kept with it), then the member's own checkmark. Older checkmarks don't say.
-const sourceOf = p => !p ? null : p.via === "registry" ? "registry" : p.via === "certificate" || p.proof ? "certificate" : p.via === "hand" ? "hand" : null;
+const sourceOf = p => !p ? null : p.via === "registry" ? "registry" : p.via === "certificate" ? "certificate" : p.via === "hand" ? "hand" : p.proof ? "certificate" : null;
 function stateOf(it) {
   const p = S.progress[it.id];
   if (p && p.done) {
@@ -1428,7 +1430,7 @@ function replacedBy(it) {
   const k = courseKey(it);
   if (!k || !parseISO(it.due)) return null;
   const day = 864e5, now = parseISO(today());
-  const opens = x => { const due = parseISO(x.due), sent = parseISO(x.received); return Math.min(due - 60 * day, sent ? sent - 30 * day : Infinity); };
+  const opens = x => { const due = parseISO(x.due), sent = parseISO(x.received); return Math.min(shiftDays(due, -60), sent ? shiftDays(sent, -30) : Infinity); };
   return S.items.filter(x => x !== it && courseKey(x) === k && parseISO(x.due) && x.due > it.due && opens(x) <= now)
     .sort((a, b) => a.due.localeCompare(b.due))[0] || null;
 }
@@ -1686,7 +1688,7 @@ function welcomeCard(mode) {
   if (mode === "report") return h("div", { class: "welcome-card" }, brand,
     h("h1", { id: "welcome-title", tabindex: "-1" }, "Start with your status report"),
     h("p", null, "It picks your groups (EMT: All EMS. Paramedic: All EMS and ALS) and checks off the courses you've done."),
-    h("button", { class: "btn primary big", type: "button", "data-key": "setup-reg", onclick: openRegistry }, icoUpload(), "Upload status report"),
+    h("button", { class: "btn primary big", type: "button", "data-key": "setup-reg", onclick: openRegistry }, icoUpload(), "Read my status report"),
     h("a", { class: "btn big", href: REGISTRY_URL, target: "_blank", rel: "noopener noreferrer", "data-key": "setup-registry" },
       "Get it from the EMS Registry", icoOut(), h("span", { class: "sr" }, " (opens in a new tab)")),
     h("details", { class: "reg-paste welcome-how" },
@@ -1695,9 +1697,14 @@ function welcomeCard(mode) {
         h("ol", { class: "reg-steps welcome-steps" },
           h("li", null, "Sign in to the EMS Registry and open ", h("b", null, "Con-Ed"), "."),
           h("li", null, "Tap ", h("b", null, "Print Status Report"), ".", h("span", { id: "welcome-dates" }, reportDatesWords() ? " " + reportDatesWords() : "")),
-          h("li", null, "Save it as a PDF, come back, and tap ", h("b", null, "Upload status report"), ".")),
+          h("li", null, "Save it as a PDF, come back, and tap ", h("b", null, "Read my status report"), ".")),
         h("p", { class: "hint" }, "It's read on this device and never sent anywhere."))),
-    h("button", { class: "link-btn", type: "button", "data-key": "setup-pick", onclick: go("pick") }, "No report or not EMS? Pick my groups"));
+    h("button", { class: "link-btn", type: "button", "data-key": "setup-pick", onclick: go("pick") }, "No report or not EMS? Pick my groups"),
+    S.uid && S.db ? h("button", { class: "link-btn", type: "button", "data-key": "setup-restore", onclick: () => {
+      const zipIn = h("input", { type: "file", accept: ".zip,application/zip", hidden: true });
+      zipIn.addEventListener("change", () => { const f = zipIn.files[0]; zipIn.remove(); if (f) restoreBackup(f, { groups: true }); });
+      document.body.append(zipIn); zipIn.click();
+    } }, "Moving from another phone? Restore your backup") : null);
   const chips = ROLE_CHIPS.map(g => h("button", {
     class: "chip", type: "button", "aria-pressed": String(S.setupPick.has(g)),
     onclick: e => { S.setupPick.has(g) ? S.setupPick.delete(g) : S.setupPick.add(g); e.currentTarget.setAttribute("aria-pressed", String(S.setupPick.has(g))); },
@@ -1817,9 +1824,9 @@ function row(it, st, terms) {
   const pdfs = pdfsOf(it);
   const meta = [AUD_LABEL[audOf(it)], it.required === true ? "" : "Optional", it.duration, memoLabel(pdfs.length)].filter(Boolean).join(" · ");
   const mark = h("button", {
-    class: "markdone", type: "button", role: "checkbox", "aria-checked": "false",
+    class: "markdone", type: "button", ...(certFirst(it) ? { "aria-haspopup": "dialog" } : { role: "checkbox", "aria-checked": "false" }),
     "aria-label": "Mark done: " + name, "data-key": "c:" + it.id, disabled: !S.uid || !S.db,
-    title: S.uid ? "Mark done" : "Sign in to Claude to tick off trainings",
+    title: S.uid ? "Mark done" : "Reload the page to tick off trainings",
     onclick: () => certFirst(it) ? askHowDone(it) : toggleDone(it.id, true),
   }, h("span", { class: "cb-box" }, icoCheck()), h("span", { "aria-hidden": "true" }, "Mark done"));
   const go = link && !expired ? h("a", { class: "btn primary go", href: link, target: "_blank", rel: "noopener noreferrer", "data-key": "o:" + it.id,
@@ -1847,8 +1854,8 @@ function askHowDone(it) {
   F("menu-body").replaceChildren(
     h("p", { class: "reg-status" }, it.title || "Untitled training"),
     h("ul", { class: "menu" },
-      mrow(icoDoc(), "Upload the certificate", "Uses its date and keeps it with the training", go(() => openCertReader(it.id)), "hd-cert"),
-      ems ? mrow(icoUpload(), "Upload status report", "Checks off every course on it at once", go(openRegistry), "hd-reg") : null,
+      mrow(icoDoc(), "Choose the certificate", "Uses its date and keeps it with the training", go(() => openCertReader(it.id)), "hd-cert"),
+      ems ? mrow(icoUpload(), "Read my status report", "Checks off every course on it at once", go(openRegistry), "hd-reg") : null,
       mrow(icoCheck(), "Just mark it done", "With today's date. You can add the certificate later.", go(() => toggleDone(it.id, true)), "hd-mark")));
   openBs("menu-sheet");
 }
@@ -2079,6 +2086,7 @@ function closeDetail(viaPop, silent) {
 }
 window.addEventListener("popstate", () => {
   if (S.ignorePop) { S.ignorePop = false; return; }
+  if (sheetStep && openSheets.length) { backFromSheet(); return; }
   if (S.view === "record" && S.recStack.length) { recBack(true); return; }
   if (S.sel && !wide()) closeDetail(true);
 });
@@ -2100,12 +2108,48 @@ function openBs(id) {
   F(id).hidden = false; F("app").inert = true; document.documentElement.classList.add("locked");
   const first = F(id).querySelector("input:checked, button, select");
   if (first) first.focus();
+  sheetOpened(id);
 }
-function closeBs(id) {
-  F(id).hidden = true; F("app").inert = false; document.documentElement.classList.remove("locked");
+function closeBs(id, viaBack) {
+  F(id).hidden = true;
+  // Under the PIN lock the page stays out of reach; the lock puts it back when it opens
+  // Another sheet still open (one opened from this one) keeps the page behind out of reach
+  const others = openSheets.some(x => x !== id && F(x) && !F(x).hidden);
+  if (pinLocked) { if (!others) { F("app").dataset.plWas = ""; pinWasLocked = false; } }
+  else if (!others) { F("app").inert = false; document.documentElement.classList.remove("locked"); }
   if (S.sheetFocus && S.sheetFocus.isConnected) S.sheetFocus.focus();
   // Back to the first-visit welcome screen if it's still up
   syncWelcome();
+  sheetClosed(id, viaBack);
+}
+// An open sheet (or the memo viewer) is a step in the browser's history, so the phone's Back gesture closes it instead
+// of changing the page underneath or leaving Train Smart. One step covers sheets that hand over to each other.
+const openSheets = [];
+let sheetStep = false;
+function sheetOpened(id) {
+  if (!openSheets.includes(id)) openSheets.push(id);
+  if (!sheetStep) { try { history.pushState({ trainSmart: "sheet" }, ""); sheetStep = true; } catch {} }
+}
+function sheetClosed(id, viaBack) {
+  const i = openSheets.indexOf(id);
+  if (i >= 0) openSheets.splice(i, 1);
+  if (viaBack) return;
+  // Closed with a button: the step comes back off, unless another sheet opened straight away
+  setTimeout(() => {
+    if (openSheets.length || !sheetStep) return;
+    sheetStep = false; S.ignorePop = true;
+    try { history.back(); } catch { S.ignorePop = false; }
+  }, 0);
+}
+// Back closes the top sheet the way its own close button does (a half-filled form asks first)
+function backFromSheet() {
+  sheetStep = false;
+  const id = openSheets[openSheets.length - 1], el = F(id);
+  const btn = el && el.querySelector(".bs-head .icon-btn");
+  if (id === "viewer") closeViewer(true);
+  else if (btn) btn.click();
+  else closeBs(id, true);
+  if (openSheets.length) { try { history.pushState({ trainSmart: "sheet" }, ""); sheetStep = true; } catch {} }
 }
 
 function openFilters() {
@@ -2157,7 +2201,7 @@ function renderGroupChips() {
     class: "chip", type: "button", "aria-pressed": String(roleOn(g)), disabled: !S.uid || !S.db,
     onclick: () => { toggleRole(g); renderGroupChips(); },
   }, icoCheck(), AUD_LABEL[g])));
-  F("groups-hint").textContent = S.uid && S.db ? "Your groups are saved on this device." : "Sign in to Claude to pick your groups.";
+  F("groups-hint").textContent = S.uid && S.db ? "Your groups are saved on this device." : "Reload the page to pick your groups.";
 }
 
 /* ---------- personal progress (private to each member) ---------- */
@@ -2198,9 +2242,11 @@ async function toggleDone(id, done) {
     saveSettings();
   }
   try {
-    await writeProgress(id, { done, completedAt: done ? today() : null, via: done ? "hand" : null, hours: done && it ? hoursOf(it) : null, hoursBy: null });
+    // A checkmark by hand is the member's own: an older certificate photo doesn't stay with it (Undo brings it back)
+    await writeProgress(id, { done, completedAt: done ? today() : null, via: done ? "hand" : null, hours: done && it ? hoursOf(it) : null, hoursBy: null, proof: null });
+    const sentPrev = done && it && isReportTodo(it) ? await noteReportSend(today()).catch(() => undefined) : undefined;
     toast(done ? "Marked done. Moved to Completed." : listed ? "Moved back to My trainings." : "Moved back to your list.",
-      { label: "Undo", fn: () => undoProgress(id, prev, listed) });
+      { label: "Undo", fn: () => { undoProgress(id, prev, listed); if (sentPrev !== undefined) queueProgress("m-status-report", () => sentPrev).catch(() => {}); } });
   } catch (e) { toast(errText(e, "Your checkmark wasn't saved.")); }
   finally { S.busy.delete(id); }
 }
@@ -2449,7 +2495,7 @@ async function fillFromEmail() {
     const msg = {
       cancelled: "Stopped. Fill in the details yourself, or try again.",
       rate_limited: "Claude is busy right now. Wait a minute, then try again.",
-      session_expired: "Sign in to Claude again, then try again.",
+      session_expired: "Reload the page, then try again.",
       refused: "Claude couldn't read that email. Fill in the details yourself.",
       invalid_json: "Claude's answer didn't come through properly. Try again.",
       empty_completion: "Claude didn't find anything to fill in. Fill in the details yourself.",
@@ -2607,7 +2653,9 @@ function regMatch(a, b) {
 }
 // Rows read "class number, course title, end date, hours…"; titles can wrap, so the text is read as one run.
 // The printed report puts the level and hours before the title ("BLS 0.50 0.00 0.00 0.50 CPAP for BLS"), so those come off.
-const REG_NOT_A_COURSE = /continuing education record|certification|practitioner|status report|address|phone|e-?mail/i;
+// Only the report's own labels count, not a word inside a course title: "PALS Recertification", "Telephone CPR" and
+// "Addressing Implicit Bias" are courses
+const REG_NOT_A_COURSE = /continuing education record|status report|\b(?:e-?mail|address|phone|telephone|fax)\s*:|\bcertification\s+(?:number|level|status|period|expiration|date)\b|\bpractitioner\s+(?:id|number|name|status)\b|\b(?:date of birth|expiration date|effective date|issue date)\b/i;
 // The member's own details at the top of the report, which the PDF can print without labels: a name label,
 // a ZIP code or a phone number never appears in a course title
 const REG_PERSONAL = /\bname\s*:|\b\d{5}(?:-\d{4})?\b|\(?\b\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b/i;
@@ -2706,7 +2754,7 @@ function matchStatusReport(rows) {
   const day = 86400000;
   const items = S.items.map(it => {
     const due = parseISO(it.due), sent = parseISO(it.received);
-    const start = due ? new Date(Math.min(due - 60 * day, sent ? sent - 30 * day : Infinity)) : null;
+    const start = due ? new Date(Math.min(shiftDays(due, -60), sent ? shiftDays(sent, -30) : Infinity)) : null;
     return { it, words: regWords(it.title), expired: !!expiredLabel(it), due, start, courseNo: String(it.courseNo || "") };
   });
   const fit = (x, date) => {
@@ -2721,11 +2769,13 @@ function matchStatusReport(rows) {
     const words = regWords(r.title);
     // The same Registry course number is an exact match (3); otherwise the names are compared (2 or 1)
     for (const x of items) {
-      const q = r.courseNo && x.courseNo === r.courseNo ? 3 : regMatch(words, x.words);
+      // Two different course numbers are two different courses (or versions), however alike their names
+      const q = r.courseNo && x.courseNo ? (x.courseNo === r.courseNo ? 3 : 0) : regMatch(words, x.words);
       if (q) { pairs.push({ ri, x, q, fit: fit(x, r.date) }); hit.add(ri); }
     }
   });
-  pairs.sort((a, b) => (a.x.expired - b.x.expired) || (b.q - a.q) || (a.fit - b.fit));
+  // The strongest match first, then the assignment the completion fits best; an expired one only breaks a tie
+  pairs.sort((a, b) => (b.q - a.q) || (a.fit - b.fit) || (a.x.expired - b.x.expired));
   const rowUsed = new Set(), itemUsed = new Set(), matched = [];
   for (const p of pairs) {
     if (rowUsed.has(p.ri) || itemUsed.has(p.x.it.id)) continue;
@@ -2792,7 +2842,7 @@ async function readStatusReport(getText) {
   if (status) status.textContent = "Reading…";
   let rows = [], cert = null;
   try { const text = await getText(); rows = parseStatusReport(text); cert = parseRegistryCert(text); }
-  catch { return regPickStep("That file couldn't be read. Make sure it's the PDF of your status report."); }
+  catch (e) { return regPickStep(e && e.libLoad ? "The reader needs a connection the first time it's used. Connect, then try again." : "That file couldn't be read. Make sure it's the PDF of your status report."); }
   if (!rows.length && !cert) return regPickStep("No courses were found. Use the status report from the Con-Ed tab, or paste the whole Con-Ed page.");
   regReviewStep(rows, cert);
 }
@@ -2839,7 +2889,7 @@ function regReviewStep(rows, cert) {
   // certification, and changeable); later, a group the certification adds that's missing is offered
   const first = S.rolesLoaded && S.roles === null, want = groupsForCert(cert);
   const pick = first ? new Set([...want, ...(S.city ? ["city"] : [])]) : null;
-  const missing = first ? [] : want.filter(g => !S.roles.includes(g));
+  const missing = first ? [] : want.filter(g => !(S.roles || []).includes(g));
   const groupsItem = first ? h("div", { class: "reg-groups", role: "group", "aria-labelledby": "reg-groups-t" },
     h("b", { id: "reg-groups-t" }, "Your groups"),
     h("span", null, cert ? `Picked from your ${cert.name} certification. Tap to change. Add FSPs, FPLs & FPCs if that's you.`
@@ -3054,22 +3104,34 @@ function handEmsCourses(from, to) {
 const reportRead = () => Object.values(S.progress).some(p => p && p.via === "registry") || Object.values(S.extras).some(x => x && x.via === "registry")
   || Object.values(S.certs).some(c => c && c.via === "registry");
 function hourEntries() {
-  const out = [];
+  const out = [], seen = new Set(), counted = [];
+  // One completion can reach two places (an earlier report read put it on one assignment of a course, a later one on
+  // the other; or a restore brought a copy), so each course counts once a day
+  const once = (it, date) => { const k = (courseKey(it) || titleOf(it).toLowerCase()) + "|" + date; if (seen.has(k)) return false; seen.add(k); return true; };
   for (const it of S.items) {
-    const kind = typeOfTraining(it);
-    if (kind === "none") continue;
-    const p = S.progress[it.id] || {};
+    const kind0 = typeOfTraining(it), p = S.progress[it.id] || {};
+    // A to-do (like sending the status report) has no hours of its own, but hours the Registry lists for it still count
+    const regOnly = kind0 === "none", kind = regOnly ? "other" : kind0;
     // Each time the member took it again counts on its own date, with the Registry's hours for that completion
-    for (const a of Array.isArray(p.also) ? p.also : []) { const e = entryFrom(String(a.date || ""), a.hoursBy, a.hours, kind); if (e) out.push(e); }
-    if (!isDone(it)) continue;
+    for (const a of Array.isArray(p.also) ? p.also : []) {
+      const d = String(a.date || "");
+      if ((regOnly && !(a.hours > 0)) || !once(it, d)) continue;
+      const e = entryFrom(d, a.hoursBy, a.hours, kind);
+      if (e) { out.push(e); counted.push({ it, date: d }); }
+    }
+    if (!isDone(it) || (regOnly && !(p.via === "registry" && p.hours > 0))) continue;
     // Without the Registry's columns, a training whose credit type is known (from TRAIN's own listing) splits the
     // same way the Registry will: Clinical Patient Care, Other, or EMSVO (which also counts as Other)
+    const d = String(p.completedAt || "");
+    if (!once(it, d)) continue;
     const n = loggedHours(it), by = p.hoursBy || (KNOWN_TYPES.includes(it.hoursType) ? splitOf(it.hoursType, n) : null);
-    const e = entryFrom(String(p.completedAt || ""), by, n, kind);
-    if (e) out.push(e);
+    const e = entryFrom(d, by, n, kind);
+    if (e) { out.push(e); counted.push({ it, date: d }); }
   }
   for (const x of Object.values(S.extras)) {
     if (!x) continue;
+    // A report course kept as taken elsewhere that's also a training here, finished the same day, already counted there
+    if (x.via === "registry" && counted.some(c => c.date === x.date && regMatch(regWords(x.title || ""), regWords(titleOf(c.it))))) continue;
     const e = entryFrom(String(x.date || ""), x.hoursBy, x.hours, HOUR_TYPES[x.type] ? x.type : "other");
     if (e) out.push(e);
   }
@@ -3079,15 +3141,18 @@ function hourEntries() {
 const amountFor = (e, kind) => kind === "cpc" ? e.cpc || 0 : kind === "emsvo" ? e.emsvo || 0 : !kind || kind === "any" || e.type === kind ? e.hours : 0;
 
 /* PURE:pace-start — no page state here, so tools/pace.test.js can load and test these on their own */
-// A PA EMS registration runs about three years, from its issue (effective) date to its expiration date. Without an issue
-// date, or with an old original one, count the three years before it expires.
+// A PA EMS registration runs from its issue (effective) date to its expiration date: three years for EMRs and EMTs, two
+// for AEMTs, paramedics and the other ALS levels (PFD GM#26-001). Without an issue date, or with an old original one,
+// count back that long from the expiration date (a February 29 expiration counts back from February 28).
+const TWO_YEAR_LEVELS = ["AEMT", "Paramedic", "PHRN", "PHPE", "PHP"];
 function registrationOf(c) {
   const ok = s => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
   if (!c || !ok(c.expires)) return null;
-  const [y, m, d] = c.expires.split("-").map(Number);
+  const [y, m, d] = c.expires.split("-").map(Number), years = TWO_YEAR_LEVELS.includes(c.name) ? 2 : 3;
   const iso = t => new Date(t).toISOString().slice(0, 10);
-  const start = iso(Date.UTC(y - 3, m - 1, d + 1)), four = iso(Date.UTC(y - 4, m - 1, d));
-  return { start: ok(c.issued) && c.issued > four && c.issued < c.expires ? c.issued : start, end: c.expires };
+  const back = n => Date.UTC(y - n, m - 1, Math.min(d, new Date(Date.UTC(y - n, m, 0)).getUTCDate()));
+  const start = iso(back(years) + 864e5), oldest = iso(back(years + 1));
+  return { start: ok(c.issued) && c.issued > oldest && c.issued < c.expires ? c.issued : start, end: c.expires };
 }
 // Where a member stands on an hours target: what's left, the time left, and whether they're behind pace.
 // Pace = (days elapsed ÷ days in the registration) × the target hours. Being behind by less than half an hour
@@ -3127,7 +3192,11 @@ function validTarget(t) {
   return !!t && typeof t.label === "string" && t.label.trim() !== "" &&
     (t.kind === "hours" ? Number(t.hours) > 0 : t.kind === "cert" && typeof t.cert === "string" && t.cert.trim() !== "");
 }
-const targetApplies = t => !Array.isArray(t.groups) || !t.groups.length || t.groups.some(g => g === "all" || roleOn(g));
+// A target can be for certain certification levels (EMT hours differ from AEMT and paramedic hours). The level is the
+// member's EMS certification; without one saved yet, ALS members count as paramedics and everyone else as EMTs.
+const levelNow = () => { const c = emsCertRecord(); return c ? c.name : roleOn("als") ? "Paramedic" : "EMT"; };
+const targetApplies = t => (!Array.isArray(t.groups) || !t.groups.length || t.groups.some(g => g === "all" || roleOn(g)))
+  && (!Array.isArray(t.levels) || !t.levels.length || t.levels.includes(levelNow()));
 function targetState(t) {
   if (t.kind === "cert") {
     const want = t.cert.toLowerCase();
@@ -3222,21 +3291,40 @@ function retakeBlock(t) {
 
 // GM#26-001: every EMS provider sends their status report to EMS Training by the end of January and of July.
 // The member records when they sent it; the card shows the next deadline and flags a missed one.
-const reportDeadlines = y => [`${y - 1}-07-31`, `${y}-01-31`, `${y}-07-31`, `${y + 1}-01-31`];
+const reportDeadlines = y => [`${y - 1}-07-31`, `${y}-01-31`, `${y}-07-31`, `${y + 1}-01-31`, `${y + 1}-07-31`];
+// A send in the two months before a deadline, or any time after it, covers that deadline
+const sendCovers = (sent, deadline) => { const [y, m, d] = deadline.split("-").map(Number); return !!sent && sent >= new Date(Date.UTC(y, m - 1, d - 61)).toISOString().slice(0, 10); };
 function reportSentState(sent, todayIso) {
   const all = reportDeadlines(+todayIso.slice(0, 4));
-  const next = all.find(d => d >= todayIso), last = all.filter(d => d < todayIso).pop();
+  // The next deadline is the first one coming up that the last send doesn't already cover
+  const next = all.find(d => d >= todayIso && !sendCovers(sent, d)), last = all.filter(d => d < todayIso).pop();
   // A send in the two months before a deadline, or any time after it, covers that deadline
   const [y, m, d] = last.split("-").map(Number), windowStart = new Date(Date.UTC(y, m - 1, d - 61)).toISOString().slice(0, 10);
   return { next, last, missed: !sent || sent < windowStart };
 }
 async function saveReportSent(date) {
   if (!parseISO(date) || date > today()) return toast("Pick the day you sent it. It can't be in the future.");
-  const prev = S.meta["m-status-report"] ? { ...S.meta["m-status-report"] } : null;
+  const prev = S.meta["m-status-report"] ? { ...S.meta["m-status-report"] } : null, ticked = [];
   try {
     await queueProgress("m-status-report", () => ({ sentAt: date, updatedAt: new Date().toISOString() }));
-    toast(`Saved. The next one is due ${regDate(reportSentState(date, today()).next)}.`, { label: "Undo", fn: () => queueProgress("m-status-report", () => prev).catch(() => {}) });
+    // The status-report to-dos this send covers are done too
+    for (const it of S.items.filter(x => isReportTodo(x) && !isDone(x) && parseISO(x.due) && sendCovers(date, x.due))) {
+      ticked.push([it.id, S.progress[it.id] ? { ...S.progress[it.id] } : null]);
+      await writeProgress(it.id, { done: true, completedAt: date, via: "hand", hours: null, hoursBy: null, proof: null });
+    }
+    toast(`Saved. The next one is due ${regDate(reportSentState(date, today()).next)}.`, { label: "Undo", fn: async () => {
+      await queueProgress("m-status-report", () => prev).catch(() => {});
+      for (const [id, was] of ticked) await queueProgress(id, () => was).catch(() => {});
+    } });
   } catch (e) { toast(errText(e, "That wasn't saved.")); }
+}
+const isReportTodo = it => /^pfd-status-report-/.test(it.id);
+// Ticking a status-report to-do records the send (unless a later one is already recorded); says what it was before
+async function noteReportSend(date) {
+  const cur = S.meta["m-status-report"] || null;
+  if (cur && parseISO(cur.sentAt) && cur.sentAt >= date) return undefined;
+  await queueProgress("m-status-report", () => ({ sentAt: date, updatedAt: new Date().toISOString() }));
+  return cur ? { ...cur } : null;
 }
 
 /* SmarterU certificates of completion (City trainings like HIPAA). The PDF reads "19-Oct-2026 <member's name> <course>";
@@ -3373,7 +3461,7 @@ async function readCertificate(file) {
   if (/^image\//.test(file.type)) return certReviewStep({ file, photo: true, date: "", it: certPrefer(), rest: "" });
   let parsed, text;
   try { text = await pdfText(file); parsed = parseSmarterU(text); }
-  catch { return certPickStep("That file couldn't be read. Choose the certificate's PDF, or a photo of it."); }
+  catch (e) { return certPickStep(e && e.libLoad ? "The reader needs a connection the first time it's used. Connect, then try again." : "That file couldn't be read. Choose the certificate's PDF, or a photo of it."); }
   // A CPR card (an AHA eCard or a Red Cross certificate) chosen here goes to the card reader
   const card = readCard(text);
   if (card) { F("reg-title").textContent = cardTitle(card); return ecardReviewStep({ file, card }); }
@@ -3441,7 +3529,7 @@ function certReviewStep({ file, photo, date, it, rest, found = !!it, train = nul
     if (sel.value === "__other" && !(hrs >= 0 && hrs <= 999)) return fail("Hours should be a number, like 1.");
     btn.disabled = true;
     await applyCertificate({ file, it: x || null, date: d, title: titleIn.value.trim(), hours: hrs, certHours,
-      where: train ? train.where || "PA TRAIN" : "SmarterU", type: train ? train.type : "other" }).catch(() => fail("That wasn't saved. Try again."));
+      where: train ? train.where || "PA TRAIN" : "SmarterU", type: train ? train.type : "other" }).catch(e => fail(e && e.tooBig ? e.message : "That wasn't saved. Try again."));
     btn.disabled = false;
   });
   label();
@@ -3468,14 +3556,16 @@ async function applyCertificate({ file, it, date, title, hours, certHours = null
   let proof = null, lost = false;
   if (file) { try { proof = await saveProofFile(file); } catch (e) { if (e && e.tooBig) throw e; lost = true; } }
   const col = S.db.collection("data/users/" + S.uid), now = new Date().toISOString();
-  closeRegistry();
+  // A save that fails leaves the sheet open with the reason, and takes back the photo it just kept
+  const undoPhoto = e => { if (proof) proofDel(proof.id); throw e; };
   if (it) {
     const prev = S.progress[it.id] ? { ...S.progress[it.id] } : null, p = prev || {};
     // Same date as already recorded: keep the certificate with it, and a checkmark the member made becomes "from certificate"
     // (one from the EMS Registry stays that way); otherwise check it off with the certificate's date
     const upgraded = p.done && p.completedAt === date && !p.proof && p.via !== "registry" && p.via !== "certificate";
-    if (p.done && p.completedAt === date) await writeProgress(it.id, { proof: proof || p.proof || null, via: p.via === "registry" ? "registry" : "certificate" });
-    else await writeProgress(it.id, { done: true, completedAt: date, via: "certificate", hours: certHours != null ? certHours : typeof p.hours === "number" ? p.hours : hoursOf(it), hoursBy: null, proof: proof || p.proof || null });
+    if (p.done && p.completedAt === date) await writeProgress(it.id, { proof: proof || p.proof || null, via: p.via === "registry" ? "registry" : "certificate" }).catch(undoPhoto);
+    else await writeProgress(it.id, { done: true, completedAt: date, via: "certificate", hours: certHours != null ? certHours : typeof p.hours === "number" ? p.hours : hoursOf(it), hoursBy: null, proof: proof || p.proof || null }).catch(undoPhoto);
+    closeRegistry();
     noteBackupDue("certificate");
     toast(lost ? "Checked off, but the certificate couldn't be kept in this browser." : upgraded ? `${it.title || "Training"}: now marked as from the certificate.`
       : `${it.title || "Training"}: done ${regDate(date)}${proof ? ", with the certificate" : ""}.`,
@@ -3484,7 +3574,8 @@ async function applyCertificate({ file, it, date, title, hours, certHours = null
   }
   const id = "x-" + rid();
   await retry(() => col.doc(id).set(Object.fromEntries(Object.entries({ kind: "training", title: title.slice(0, 200), date, hours: Math.round(hours * 100) / 100,
-    type: HOUR_TYPES[type] ? type : "other", where, via: "certificate", proof, addedAt: now, updatedAt: now }).filter(([, v]) => v != null && v !== ""))));
+    type: HOUR_TYPES[type] ? type : "other", where, via: "certificate", proof, addedAt: now, updatedAt: now }).filter(([, v]) => v != null && v !== "")))).catch(undoPhoto);
+  closeRegistry();
   noteBackupDue("certificate");
   toast("Saved to My record under Training taken elsewhere.", { label: "Undo", fn: () => col.doc(id).delete().catch(() => {}) });
 }
@@ -3565,7 +3656,7 @@ async function readEcard(file) {
   if (/^image\//.test(file.type)) return ecardReviewStep({ file, photo: true, card: { course: "", issued: "", expires: "", code: "" } });
   let text;
   try { text = await pdfText(file); }
-  catch { return ecardPickStep("That file couldn't be read. Choose the eCard's PDF, or a photo of it."); }
+  catch (e) { return ecardPickStep(e && e.libLoad ? "The reader needs a connection the first time it's used. Connect, then try again." : "That file couldn't be read. Choose the eCard's PDF, or a photo of it."); }
   const card = parseAhaCard(text) || parseRedCrossCard(text);
   if (card && card.issuer === "Red Cross") F("reg-title").textContent = cardTitle(card);
   // A SmarterU, PA TRAIN or FEMA certificate chosen here goes to its own reader
@@ -3720,9 +3811,9 @@ function renderRecord() {
   if (key) { const el = [...list.querySelectorAll("[data-key]")].find(x => x.dataset.key === key); if (el) el.focus({ preventScroll: true }); }
 }
 function recordChildren() {
-  if (S.offline) return [h("div", { class: "notice" }, "Sign in to Claude to keep your training record.")];
+  if (S.offline) return [h("div", { class: "notice" }, "Your record couldn't be opened. Check your connection, then reload the page.")];
   if (!S.loaded) return [0, 1].map(() => h("div", { class: "skel", "aria-hidden": "true" }));
-  if (!S.uid || !S.db) return [h("div", { class: "notice" }, "Sign in to Claude to keep your training record.")];
+  if (!S.uid || !S.db) return [h("div", { class: "notice" }, "Your record couldn't be opened. Check your connection, then reload the page.")];
   const pages = { tools: toolsPage, reqs: reqsPage, certs: certsPage, extras: extrasPage, hours: hoursPage, backup: () => [backupCard(backupState())],
     restore: restorePage, pin: () => [lockCard()], career: careerPage, find: findPage, faq: () => [faqCard()], calendar: calendarPage };
   const page = recPage(), certId = page && page.startsWith("cert:") ? page.slice(5) : null;
@@ -3753,7 +3844,7 @@ function recordOverview() {
   if (ems && !reportRead()) out.push(h("section", { class: "card start", "aria-labelledby": "rec-start" },
     h("h2", { id: "rec-start" }, "Start with your status report"),
     h("p", null, "It fills in your EMS courses, their hours and your EMT certification. Print it from the EMS Registry: Con-Ed, then Print Status Report."),
-    h("div", { class: "reg-acts" }, h("button", { class: "btn primary", type: "button", "data-key": "rec-reg", onclick: openRegistry }, icoUpload(), "Upload status report"))));
+    h("div", { class: "reg-acts" }, h("button", { class: "btn primary", type: "button", "data-key": "rec-reg", onclick: openRegistry }, icoUpload(), "Read my status report"))));
   const bs = backupState();
   if (bs.nudge) out.push(backupNudge(bs));
   out.push(...progressCards());
@@ -3810,7 +3901,7 @@ function progressCards() {
       cy ? cyc.map(progRow) : h("div", { class: "card-body" },
         h("p", { class: "rec-muted" }, "Add your EMS certification with its expiration date, or upload your status report, to track this registration's hours."),
         h("div", { class: "reg-acts" },
-          h("button", { class: "btn sm primary", type: "button", "data-key": "cy-reg", onclick: openRegistry }, "Upload status report"),
+          h("button", { class: "btn sm primary", type: "button", "data-key": "cy-reg", onclick: openRegistry }, "Read my status report"),
           h("button", { class: "btn sm", type: "button", "data-key": "cy-add", onclick: () => openRec("cert") }, "Add certification"))),
       yr.length ? null : reqLink()));
   }
@@ -3867,7 +3958,7 @@ function toolsPage() {
     h("ul", { class: "menu", "aria-labelledby": "tl-imp" },
       h("li", { class: "mhead" }, icoUpload(), h("span", null, h("b", { id: "tl-imp" }, "Import your training"), h("small", null, "Add courses, hours and certifications." +
         (S.site && S.site.sharesIn && S.site.sharesIn() ? " You can also share a PDF or photo to Train Smart from your email or Photos." : "")))),
-      mrow(icoDoc(), "Upload EMS status report", null, openRegistry, "tl-reg"),
+      mrow(icoDoc(), "Read my EMS status report", null, openRegistry, "tl-reg"),
       mrow(icoDoc(), "Read a certificate", "SmarterU, PA TRAIN or FEMA", openCertReader, "tl-cert"),
       mrow(icoAward(), "Read AHA eCard", "CPR, BLS, ACLS or PALS", openEcardReader, "tl-ecard"),
       mrow(icoCap(), "Add a class", "Type the code from an in-person class", () => openClassSheet(null), "tl-class")),
@@ -3900,9 +3991,9 @@ function targetBlock(t) {
       h("ul", null, st.handList.map(c => h("li", null, h("b", null, c.title), ` · ${regDate(c.date)} · ${fmtHours(c.hours)}`))),
       reportRead()
         ? h("p", null, "They'll count once they're on your status report. The Registry can take 15 to 30 days to post a course, so upload a newer report after that. ",
-            h("button", { class: "link-btn", type: "button", "data-key": "hand:" + t.id, onclick: openRegistry }, "Upload status report"))
-        : h("p", null, "Upload your status report to count these toward Clinical Patient Care. ",
-            h("button", { class: "link-btn", type: "button", "data-key": "hand:" + t.id, onclick: openRegistry }, "Upload status report"))) : null,
+            h("button", { class: "link-btn", type: "button", "data-key": "hand:" + t.id, onclick: openRegistry }, "Read my status report"))
+        : h("p", null, "Read your status report to count these toward Clinical Patient Care. ",
+            h("button", { class: "link-btn", type: "button", "data-key": "hand:" + t.id, onclick: openRegistry }, "Read my status report"))) : null,
     t.kind === "hours" && !st.met && st.remaining ? gapList(t, st) : null,
     t.note ? h("p", { class: "rec-muted" }, t.note) : null);
 }
@@ -4065,7 +4156,7 @@ function icsFile(items) {
   const alarm = (days, title) => ["BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${esc(title)}`,
     `TRIGGER:${days === 1 ? "-PT15H" : `-P${days - 1}DT15H`}`, "END:VALARM"];
   const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Train Smart//Reminders//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "X-WR-CALNAME:Train Smart"];
-  for (const e of items) lines.push("BEGIN:VEVENT", `UID:${e.uid}@train-smart`, `DTSTAMP:${stamp}`,
+  for (const e of items) lines.push("BEGIN:VEVENT", `UID:${String(e.uid).replace(/[^\w.-]/g, "_")}@train-smart`, `DTSTAMP:${stamp}`,
     `DTSTART;VALUE=DATE:${day(e.date)}`, `DTEND;VALUE=DATE:${after(e.date)}`, e.yearly ? "RRULE:FREQ=YEARLY" : null,
     `SUMMARY:${esc(e.title)}`, e.note ? `DESCRIPTION:${esc(e.note)}` : null, e.url ? `URL:${e.url}` : null, "TRANSP:TRANSPARENT",
     ...e.alarms.flatMap(d => alarm(d, e.title)), "END:VEVENT");
@@ -4143,7 +4234,7 @@ function openAddMenu() {
   const go = fn => () => { closeBs("menu-sheet"); fn(); };
   F("menu-title").textContent = "Add to record";
   F("menu-body").replaceChildren(h("ul", { class: "menu" },
-    mrow(icoUpload(), "Upload EMS status report", "Fills in EMS courses, their hours and your EMS certification", go(openRegistry), "am-reg"),
+    mrow(icoUpload(), "Read my EMS status report", "Fills in EMS courses, their hours and your EMS certification", go(openRegistry), "am-reg"),
     mrow(icoDoc(), "Read a certificate", "SmarterU, PA TRAIN or FEMA: checks off the training", go(openCertReader), "am-cert"),
     mrow(icoAward(), "Add a certification", "EMT, CPR, ACLS and others, with a photo or PDF of the card. An AHA eCard PDF fills itself in.", go(() => openRec("cert")), "am-c"),
     mrow(icoCap(), "Add a class", "Type the code from an in-person class, or scan its QR code", go(() => openClassSheet(null)), "am-class"),
@@ -4247,7 +4338,7 @@ function recFields(kind, r) {
   const proofRow = () => {
     const z = S.recEdit, has = z.rec && z.rec.proof && !z.dropProof;
     return h("div", { class: "rf" },
-      h("label", { for: "rf-file" }, has ? "Replace the photo or PDF" : "Photo or PDF of the certificate"),
+      h("label", { for: "rf-file" }, has ? "Replace the photo or PDF" : kind === "cert" ? "Photo or PDF of the card" : "Photo or PDF of the certificate"),
       h("input", { id: "rf-file", type: "file", accept: "image/*,application/pdf", onchange: e => { S.recEdit.file = e.target.files[0] || null; if (kind === "cert") readCardInto(S.recEdit.file); } }),
       has ? h("p", { class: "rf-proof" }, `Attached: ${z.rec.proof.name || "certificate"}`,
         h("button", { class: "link-btn", type: "button", onclick: () => { S.recEdit.dropProof = true; F("rf-proof-slot").replaceChildren(proofRow()); } }, "Remove")) : null);
@@ -4342,16 +4433,20 @@ async function saveRec(e) {
   // by hand), rather than adding a second
   const same = !z.id && z.kind === "cert" && z.read && z.file ? sameCertAs(rec.name) : null;
   const id = z.id || (same ? same.id : (z.kind === "cert" ? "c-" : "x-") + rid()), old = z.rec || (same ? S.certs[same.id] || {} : {});
-  let proof = z.dropProof ? null : old.proof || null, proofLost = false;
+  let proof = z.dropProof ? null : old.proof || null, proofLost = false, fresh = null;
+  const drop = [];
   try {
     if (z.file) {
-      try { proof = await saveProofFile(z.file); if (old.proof && !z.dropProof) proofDel(old.proof.id); }
+      try { fresh = proof = await saveProofFile(z.file); if (old.proof && !z.dropProof) drop.push(old.proof.id); }
       catch (err) { if (err && err.tooBig) { F("rec-save").disabled = false; F("rec-save").textContent = "Save"; return fail(err.message, "rf-file"); } proofLost = true; }
     }
-    if (z.dropProof && old.proof) proofDel(old.proof.id);
+    if (z.dropProof && old.proof) drop.push(old.proof.id);
     const now = new Date().toISOString();
     const doc = Object.fromEntries(Object.entries({ ...rec, proof, addedAt: old.addedAt || now, updatedAt: now }).filter(([, v]) => v != null && v !== ""));
-    await retry(() => S.db.collection("data/users/" + S.uid).doc(id).set(doc));
+    // If the record can't be saved, the old photo stays and the new one goes
+    try { await retry(() => S.db.collection("data/users/" + S.uid).doc(id).set(doc)); }
+    catch (err) { if (fresh) proofDel(fresh.id); throw err; }
+    for (const pid of drop) proofDel(pid);
     closeBs("rec-sheet"); S.recEdit = null;
     if (z.file || (!z.id && z.kind === "cert")) noteBackupDue("certificate");
     toast(proofLost ? "Saved, but the photo couldn't be kept in this browser." : z.id ? "Saved." : same ? `${rec.name} updated.` : z.kind === "cert" ? "Certification added." : "Training added.");
@@ -4374,7 +4469,18 @@ async function deleteRec() {
   } catch (err) { const el = F("rf-err"); el.textContent = errText(err, "That wasn't deleted."); el.hidden = false; }
 }
 function setupRecSheet() {
-  const close = () => { closeBs("rec-sheet"); S.recEdit = null; };
+  // Closing a half-filled form asks first: the first try says so, a second one closes it
+  const close = () => {
+    const z = S.recEdit;
+    if (z && z.dirty && !z.closeArm) {
+      z.closeArm = true;
+      const el = F("rf-err"); el.textContent = "You have changes that aren't saved. Close again to throw them away, or tap Save."; el.hidden = false;
+      return;
+    }
+    closeBs("rec-sheet"); S.recEdit = null;
+  };
+  F("rec-form").addEventListener("input", () => { if (S.recEdit) { S.recEdit.dirty = true; S.recEdit.closeArm = false; } });
+  F("rec-form").addEventListener("change", () => { if (S.recEdit) S.recEdit.dirty = true; });
   F("rec-form").addEventListener("submit", saveRec);
   F("rec-del").addEventListener("click", deleteRec);
   F("rec-cancel").addEventListener("click", close);
@@ -4397,17 +4503,27 @@ function proofDb() {
       try {
         const r = indexedDB.open("train-smart-proofs", 1);
         r.onupgradeneeded = () => r.result.createObjectStore("files");
-        r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+        r.onsuccess = () => {
+          // iPhones can close the connection in the background: the next use opens it again
+          const db = r.result;
+          db.onclose = () => { proofDbP = null; };
+          db.onversionchange = () => { db.close(); proofDbP = null; };
+          res(db);
+        };
+        r.onerror = () => rej(r.error);
       } catch (err) { rej(err); }
     });
     proofDbP.catch(() => { proofDbP = null; });
   }
   return proofDbP;
 }
-async function proofOp(mode, fn) {
+async function proofOp(mode, fn, again = true) {
   const db = await proofDb();
+  let tx;
+  try { tx = db.transaction("files", mode); }
+  catch (err) { proofDbP = null; if (again) return proofOp(mode, fn, false); throw err; }
   return new Promise((res, rej) => {
-    const tx = db.transaction("files", mode), req = fn(tx.objectStore("files"));
+    const req = fn(tx.objectStore("files"));
     tx.oncomplete = () => res(req && req.result); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
   });
 }
@@ -4551,11 +4667,26 @@ function printRecord() {
    Train Smart never touches a cloud account, and nothing leaves the device except as the file the member saves. */
 const RECORD_SCHEMA = 1;
 const libCache = {};
+// Each library from cdnjs is checked against its published fingerprint (SRI); a changed copy is refused, not run
+const LIB_SRI = {
+  "jszip/3.10.1/jszip.min.js": "sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==",
+  "jspdf/2.5.1/jspdf.umd.min.js": "sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==",
+  "pdf.js/3.11.174/pdf.min.js": "sha512-q+4liFwdPC/bNdhUpZx6aXDx/h77yEQtn4I1slHydcbZK34nLaR3cAeYSJshoxIOq3mjEf7xJE8YWIUHMn+oCQ==",
+  "pdf.js/3.11.174/pdf.worker.min.js": "sha512-BbrZ76UNZq5BhH7LL7pn9A4TKQpQeNCHOo65/akfelcIBbcVvYWOFQKPXIrykE3qZxYjmDX573oa4Ywsc7rpTw==",
+};
+function scriptTag(src) {
+  const s = document.createElement("script"), sri = LIB_SRI[src.replace("https://cdnjs.cloudflare.com/ajax/libs/", "")];
+  if (sri) { s.integrity = sri; s.crossOrigin = "anonymous"; }
+  s.src = src;
+  return s;
+}
+// A library that can't load (no connection the first time, or a refused copy) says so, apart from a file that can't be read
+const libError = () => Object.assign(new Error("load failed"), { libLoad: true });
 function loadLib(src, ready) {
   if (!libCache[src]) {
     libCache[src] = new Promise((res, rej) => {
-      const s = document.createElement("script");
-      s.src = src; s.onload = () => res(ready()); s.onerror = () => rej(new Error("load failed"));
+      const s = scriptTag(src);
+      s.onload = () => res(ready()); s.onerror = () => rej(libError());
       document.head.append(s);
     });
     libCache[src].catch(() => { delete libCache[src]; });
@@ -4601,13 +4732,17 @@ const BACKUP_WARNING = "This file contains your certification card numbers and c
 async function buildBackup() {
   const JSZip = await loadZip();
   const raw = myRecords(), zip = new JSZip(), files = {};
+  let missing = 0;
   for (const d of Object.values(raw)) {
     if (!d || !d.proof || !d.proof.id || files[d.proof.id]) continue;
     try {
       const v = await proofGet(d.proof.id);
       if (v && v.blob) { const name = `files/${d.proof.id}.${extOf(v.type || d.proof.type)}`; zip.file(name, v.blob); files[d.proof.id] = name; }
-    } catch {}
+      else missing++;
+    } catch { missing++; }
   }
+  // Said when the backup is saved: a photo added on another device, or one this browser lost, isn't in it
+  S.backupMissing = missing;
   zip.file("record.json", JSON.stringify(recordJson(raw, files), null, 2));
   zip.file("README.txt", "This is your Train Smart backup: the trainings you finished, your certifications and hours, and the certificate photos and PDFs you added. " +
     "You can restore it into Train Smart on any phone or computer (My record, Record tools, Restore from backup), or keep it as your own record.\r\n\r\n" + BACKUP_WARNING + "\r\n");
@@ -4648,7 +4783,8 @@ async function shareBackup() {
 }
 function markBackedUp(msg) {
   pref.set("backupAt", new Date().toISOString()); pref.set("backupDue", null); pref.set("backupSnooze", null);
-  renderAll(); toast(msg);
+  const n = S.backupMissing || 0; S.backupMissing = 0;
+  renderAll(); toast(n ? `${msg} ${n} certificate ${n === 1 ? "photo isn't" : "photos aren't"} on this device, so ${n === 1 ? "it isn't" : "they aren't"} in it.` : msg);
 }
 // Reading a status report or adding a certificate makes the next look at My record suggest a backup
 const noteBackupDue = reason => pref.set("backupDue", { reason, at: new Date().toISOString() });
@@ -4715,10 +4851,14 @@ function backupCard(bs) {
 // The Restore from backup page
 function restorePage() {
   const zipIn = h("input", { type: "file", accept: ".zip,application/zip", hidden: true });
-  zipIn.addEventListener("change", () => { const f = zipIn.files[0]; zipIn.value = ""; if (f) restoreBackup(f); });
+  // A device with nothing finished yet is most likely new, so it takes the backup's groups too
+  const fresh = !Object.values(S.progress).some(p => p && p.done) && !Object.keys(S.certs).length && !Object.keys(S.extras).length;
+  const useGroups = h("input", { type: "checkbox", id: "bk-groups", checked: fresh });
+  zipIn.addEventListener("change", () => { const f = zipIn.files[0]; zipIn.value = ""; if (f) restoreBackup(f, { groups: useGroups.checked }); });
   return [h("section", { class: "rec-card", "aria-label": "Restore from backup" },
     h("p", null, "Choose a train-smart-backup .zip file that Download backup saved, on this or another phone or computer."),
     h("p", { class: "rec-muted" }, "It adds what's missing here and doesn't overwrite your record: finished trainings stay as they are, and for certifications and training taken elsewhere the newer change wins. Certificate photos come back too. You can undo it right after."),
+    h("label", { class: "cbx bk-groups", for: "bk-groups" }, useGroups, "Also use the groups and My trainings choices saved in the backup"),
     h("div", { class: "rec-head" }, h("button", { class: "btn primary", type: "button", "data-key": "bk-restore", onclick: () => zipIn.click() }, icoRestore(), "Choose backup file")),
     zipIn)];
 }
@@ -4762,6 +4902,8 @@ function mergeMemberRecords(cur, inc, { settings = "fill" } = {}) {
   for (const [id, raw] of Object.entries(inc || {}).slice(0, 3000)) {
     if (id === "_settings" || !raw || typeof raw !== "object" || Array.isArray(raw) || id.startsWith("_") || id.length > 120) continue;
     if (/^[xcm]-/.test(id)) {
+      // Own records keep plain ids (they end up in file names and calendar entries)
+      if (!/^[xcm]-[\w.-]{1,100}$/.test(id)) continue;
       const rec = cleanOwnRecord(id, raw);
       if (rec && (!out[id] || String(rec.updatedAt || "") > String(out[id].updatedAt || ""))) { if (!out[id]) added++; out[id] = rec; }
       continue;
@@ -4784,7 +4926,9 @@ function mergeMemberRecords(cur, inc, { settings = "fill" } = {}) {
     const okBy = v => v && typeof v === "object" && ["cpc", "other", "emsvo"].every(k => num(+v[k] || 0)) ? { cpc: +v.cpc || 0, other: +v.other || 0, emsvo: +v.emsvo || 0 } : null;
     const incAlso = (Array.isArray(rec.also) ? rec.also.slice(0, 50) : []).filter(a => a && parseISO(a.date) && typeof a.title === "string")
       .map(a => Object.fromEntries(Object.entries({ date: a.date, title: a.title.slice(0, 200), hours: num(a.hours) ? a.hours : 0, hoursBy: okBy(a.hoursBy) }).filter(([, v]) => v != null)));
-    const mineAlso = Array.isArray(mine.also) ? mine.also : [], addAlso = incAlso.filter(a => !mineAlso.some(b => alsoKey(b) === alsoKey(a)));
+    // The day this device has it finished is that completion already, not another time
+    const doneDay = next.done ? next.completedAt : null;
+    const mineAlso = Array.isArray(mine.also) ? mine.also : [], addAlso = incAlso.filter(a => a.date !== doneDay && !mineAlso.some(b => alsoKey(b) === alsoKey(a)));
     if (addAlso.length) next.also = [...mineAlso, ...addAlso].sort((a, b) => a.date.localeCompare(b.date));
     if (Object.keys(next).length) out[id] = next;
   }
@@ -4793,7 +4937,8 @@ function mergeMemberRecords(cur, inc, { settings = "fill" } = {}) {
     out._settings = { roles: s.roles.filter(x => GROUPS.includes(x)), city: s.city !== false, added: ids(s.added), removed: ids(s.removed) };
   return { out, added };
 }
-async function restoreBackup(file) {
+// groups: also take the groups and My trainings choices saved in the backup (a new phone, or when asked)
+async function restoreBackup(file, { groups = false } = {}) {
   if (!S.db || !S.uid) return;
   const notOurs = "That isn't a Train Smart backup. Choose the .zip that Download backup saved.";
   if (!file || file.size > 300e6) return toast(notOurs);
@@ -4805,7 +4950,7 @@ async function restoreBackup(file) {
   } catch { return toast(notOurs); }
   if (!json || json.app !== "Train Smart" || !json.records || typeof json.records !== "object" || Array.isArray(json.records)) return toast(notOurs);
   if (json.schemaVersion > RECORD_SCHEMA) return toast("That backup is from a newer Train Smart. Reload this page, then try again.");
-  const cur = myRecordsForMerge(), { out } = mergeMemberRecords(cur, json.records, { settings: "fill" });
+  const cur = myRecordsForMerge(), { out } = mergeMemberRecords(cur, json.records, { settings: groups ? "replace" : "fill" });
   const changed = Object.keys(out).filter(id => JSON.stringify(out[id]) !== JSON.stringify(cur[id]));
   // Then the certificate photos and PDFs: every one a record here points to that this device doesn't have yet
   let photos = 0;
@@ -4920,7 +5065,7 @@ let pdfjsReady = null, viewerToken = 0;
 function loadPdfJs() {
   if (pdfjsReady) return pdfjsReady;
   const add = src => new Promise((res, rej) => {
-    const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("load failed"));
+    const s = scriptTag(src); s.onload = res; s.onerror = () => rej(libError());
     document.head.appendChild(s);
   });
   // Loading the worker as a plain script lets pdf.js render on the page itself
@@ -4940,6 +5085,7 @@ function showViewer(name) {
   F("viewer-save").hidden = true; F("viewer-share").hidden = true;
   F("viewer-body").replaceChildren(h("p", { class: "hint" }, "Opening…"));
   F("viewer").hidden = false; F("app").inert = true; F("sheet").inert = true;
+  sheetOpened("viewer");
   document.documentElement.classList.add("locked");
   F("viewer-close").focus();
   return token;
@@ -4980,11 +5126,14 @@ async function drawPdfPages(body, bytes, token) {
     c.width = Math.floor(vp.width); c.height = Math.floor(vp.height); c.style.width = Math.floor(vp.width / dpr) + "px";
     body.append(c);
     await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+    // The page is a picture; its words go beside it for screen readers
+    try { const words = (await page.getTextContent()).items.map(i => i.str).join(" ").replace(/\s+/g, " ").trim(); if (words) body.append(h("p", { class: "sr" }, `Page ${n}: ${words}`)); } catch {}
   }
 }
 
-function closeViewer() {
+function closeViewer(viaBack) {
   viewerToken++;
+  sheetClosed("viewer", viaBack === true);
   F("viewer").hidden = true; F("viewer-body").replaceChildren(); S.viewerBlob = null; S.viewerShare = null;
   F("sheet").inert = false;
   if (F("sheet").hidden) { F("app").inert = false; document.documentElement.classList.remove("locked"); }
@@ -5041,7 +5190,7 @@ function lockApp() {
   setTimeout(() => { if (!F("pl-pin").disabled) F("pl-pin").focus(); }, 0);
 }
 function unlockApp() {
-  pinLocked = false; clearInterval(pinTimer);
+  pinLocked = false; clearTimeout(pinTimer);
   F("pinlock").hidden = true;
   for (const el of document.body.children) if (el.id !== "pinlock" && "plWas" in el.dataset) { el.inert = el.dataset.plWas === "1"; delete el.dataset.plWas; }
   if (!pinWasLocked) document.documentElement.classList.remove("locked");
@@ -5052,14 +5201,14 @@ function drawPinLock() {
   if (!c) return unlockApp();
   const now = Date.now(), waiting = c.waitUntil > now, err = F("pl-err");
   F("pl-pin").disabled = F("pl-go").disabled = waiting;
-  clearInterval(pinTimer);
+  clearTimeout(pinTimer);
   if (waiting) {
-    err.textContent = `Too many tries. Try again in ${waitWords(c.waitUntil - now)}.`; err.hidden = false;
-    pinTimer = setInterval(() => {
-      const left = (lockCfg() || {}).waitUntil - Date.now();
-      if (left > 0) { err.textContent = `Too many tries. Try again in ${waitWords(left)}.`; return; }
-      clearInterval(pinTimer); err.hidden = true; drawPinLock(); F("pl-pin").focus();
-    }, 1000);
+    // Said once (a screen reader would read a ticking countdown out every second); the box opens again when it's time
+    const at = new Date(c.waitUntil);
+    err.textContent = c.waitUntil - now > 60000 ? `Too many tries. Try again at ${at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`
+      : `Too many tries. Try again in ${waitWords(c.waitUntil - now)}.`;
+    err.hidden = false;
+    pinTimer = setTimeout(() => { err.hidden = true; drawPinLock(); F("pl-pin").focus(); }, c.waitUntil - now + 100);
   }
   const ready = c.resetAt && now >= c.resetAt;
   F("pl-reset").replaceChildren(...(ready
@@ -5181,8 +5330,8 @@ const FAQ = [
     "Add Train Smart to your home screen. Safari can clear a website's saved data after about 7 days away; the home screen app keeps it. Safari and the home screen app keep separate records, so back up in one and restore in the other."],
   ["Why doesn't a course count toward Clinical Patient Care yet?",
     "A course counts toward Clinical Patient Care when TRAIN lists it as clinical, or when your status report shows it that way. The Registry can take 15 to 30 days to post a course, so upload a newer status report after that. The Registry's numbers are the official ones."],
-  ["What do the PIN lock and Lock this device do?",
-    "The PIN lock asks for a PIN before Train Smart opens on this device. Turn it on in My record, Record tools, App lock & PIN. If you forget it, you can turn the lock off 24 hours after asking, and nothing is deleted. Lock this device (in Settings, the gear at the top) signs this device out until the Train Smart password is entered again; your record stays."],
+  ["What do the PIN lock and Sign out on this device do?",
+    "The PIN lock asks for a PIN before Train Smart opens on this device. Turn it on in My record, Record tools, App lock & PIN. If you forget it, you can turn the lock off 24 hours after asking, and nothing is deleted. Sign out on this device (in Settings, the gear at the top) closes Train Smart here until your invite link (or the password) is used again; your record stays. Neither one scrambles the record on the device: they keep it out of casual reach, and your phone's own lock screen is what really protects it."],
   ["Is Train Smart official?",
     "No. It's a tool for members to keep track. The PA EMS Registry and EMS Training's records are the official ones. If something is wrong or missing in Train Smart, tell your training coordinator."],
 ];
@@ -5208,7 +5357,7 @@ function lockCard() {
            h("button", { class: "btn", type: "button", "data-key": "pin-chg", onclick: () => openPinSheet("change") }, "Change PIN or timing"),
            h("button", { class: "btn ghost", type: "button", "data-key": "pin-off", onclick: () => openPinSheet("off") }, "Turn off")]
         : h("button", { class: "btn primary", type: "button", "data-key": "pin-on", onclick: () => openPinSheet("on") }, icoLock(), "Turn on PIN lock")),
-    S.site ? h("p", { class: "rec-muted" }, "Lock this device is different: it signs this device out until the Train Smart password is entered again, for a shared computer, and your record stays. It's in Settings (the gear at the top).") : null);
+    S.site ? h("p", { class: "rec-muted" }, "Sign out on this device is different: it closes Train Smart here until your invite link (or the password) is used again, for a shared computer, and your record stays. It's in Settings (the gear at the top).") : null);
 }
 
 /* ---------- theme (remembered on this device only) ---------- */
@@ -5221,8 +5370,10 @@ function applyTheme() {
 }
 function setTheme(t) { theme = THEMES.includes(t) ? t : "auto"; pref.set("theme", theme); applyTheme(); }
 
-/* ---------- settings (the gear): groups, theme, and on the members' site, the home screen and Lock this device ---------- */
-function openSettings() {
+/* ---------- settings (the gear): groups, theme, and on the members' site, the home screen and Sign out on this device ---------- */
+// again: drawn again in place (Sign out asks for a second tap first)
+function openSettings(again) {
+  if (again !== true) S.signOutArm = false;
   const go = fn => () => { closeBs("menu-sheet"); fn(); };
   F("menu-title").textContent = "Settings";
   const site = S.site;
@@ -5233,9 +5384,12 @@ function openSettings() {
         h("input", { type: "radio", name: "theme", value: k, checked: theme === k, onchange: () => setTheme(k) }), THEME_INFO[k].name)))),
     site ? h("ul", { class: "menu" },
       site.canInstall && site.canInstall() ? mrow(icoHome(), "Add to home screen", "It opens like an app, even without signal", go(site.addToHomeScreen), "set-home") : null,
-      mrow(icoSignOut(), "Lock this device", "Signs this device out until the Train Smart password is entered again, for a shared computer. Your record stays.", site.lockDevice, "set-lockdev", null, false)) : null,
+      mrow(icoSignOut(), "Sign out on this device", S.signOutArm
+        ? "Tap again to sign out. Opening Train Smart here again takes your invite link (or the password). Your record stays."
+        : "For a shared phone or computer. Your record stays on it.",
+        () => { if (!S.signOutArm) { S.signOutArm = true; openSettings(true); focusKey("set-lockdev"); return; } S.signOutArm = false; site.lockDevice(); }, "set-lockdev", null, false)) : null,
   ].filter(Boolean));
-  openBs("menu-sheet");
+  if (again !== true) openBs("menu-sheet");
 }
 
 /* ---------- wiring ---------- */
@@ -5268,6 +5422,8 @@ F("search-btn").addEventListener("click", () => {
 });
 F("q").addEventListener("input", e => { S.q = e.target.value.trim(); renderAll(); });
 F("toast-act").addEventListener("click", () => { const fn = toastFn; F("toast").hidden = true; toastFn = null; if (fn) fn(); });
+for (const [ev, fn] of [["pointerenter", holdToast], ["focusin", holdToast], ["pointerleave", () => { if (!F("toast").hidden) runToast(); }], ["focusout", () => { if (!F("toast").hidden) runToast(); }]])
+  F("toast").addEventListener(ev, fn);
 
 F("f-pdf").addEventListener("change", e => { const files = [...e.target.files]; if (files.length && S.assets) attachPdfs(files); });
 F("viewer-close").addEventListener("click", closeViewer);
@@ -5298,6 +5454,8 @@ F("f-email").addEventListener("paste", e => {
 });
 
 document.addEventListener("keydown", e => {
+  // Behind the PIN lock nothing else answers keys
+  if (pinLocked) return;
   if (!F("viewer").hidden) { if (e.key === "Escape") { e.preventDefault(); closeViewer(); } return; }
   if (!F("sheet").hidden) { if (e.key === "Escape" && !S.dirty) { e.preventDefault(); closeSheet(); } return; }
   for (const id of ["filters", "groups-sheet", "reg-sheet", "menu-sheet"]) if (!F(id).hidden) { if (e.key === "Escape") { e.preventDefault(); closeBs(id); } return; }
@@ -5371,6 +5529,19 @@ const localDownloads = {
   },
 };
 
+// Some browsers don't keep what a page saves (a private window, a full phone, blocked site data), and the member would
+// only find out after closing it. A test save when the site opens, and any save that fails, puts up a lasting warning.
+function storageWorks() {
+  try { localStorage.setItem("ts:probe", "1"); const ok = localStorage.getItem("ts:probe") === "1"; localStorage.removeItem("ts:probe"); return ok; }
+  catch { return false; }
+}
+function saveTrouble() {
+  if (document.getElementById("save-warn")) return;
+  const vhead = document.getElementById("vhead");
+  if (!vhead) return;
+  vhead.before(h("div", { class: "alert bad save-warn", id: "save-warn", role: "alert" },
+    h("p", null, "This browser isn't keeping what you save, so your checkmarks and records will be gone when you close it. Open Train Smart in Safari or Chrome, not a private window, and check that the phone has free space.")));
+}
 // Stands in for the Claude database: trainings and targets are read only from the unlocked bundle,
 // and the member's own records live in localStorage (or in memory when the browser blocks storage)
 function localStore(bundle) {
@@ -5380,7 +5551,7 @@ function localStore(bundle) {
     try { const v = JSON.parse(localStorage.getItem("ts:mine:" + col) || "null"); if (v && typeof v === "object") return v; } catch {}
     return memory[col] || {};
   };
-  const keep = (col, all) => { memory[col] = all; try { localStorage.setItem("ts:mine:" + col, JSON.stringify(all)); } catch {} };
+  const keep = (col, all) => { memory[col] = all; try { localStorage.setItem("ts:mine:" + col, JSON.stringify(all)); } catch { saveTrouble(); } };
   const read = col => fixed[col] || load(col);
   const snap = col => {
     const docs = Object.entries(read(col)).map(([id, d]) => ({ id, exists: true, data: () => d, metadata: {} }));
@@ -5545,8 +5716,14 @@ async function unlockSite() {
   lock.hidden = false; F("app").inert = true; document.documentElement.classList.add("locked");
   if (inviteBad) { err.textContent = "That invite link doesn't work anymore, or part of it is missing. Ask for a new one."; err.hidden = false; }
   else if (inviteCut) { err.textContent = "Part of your invite link is missing. Go back to the message, press and hold the link, tap Copy, and paste it here."; err.hidden = false; }
-  else if (lockedAgain) { err.textContent = "Train Smart was locked on this phone. Tap your invite link again, or paste it here."; err.hidden = false; }
+  else if (lockedAgain) { err.textContent = "Train Smart was locked on this phone. Tap your invite link again, or paste it here (or type the password)."; err.hidden = false; }
   pw.focus();
+  // A pasted invite link shows as itself (a password box shows only dots), and opens the site right away
+  pw.addEventListener("input", e => {
+    const link = /invite=/.test(pw.value) || !!inviteFrom(pw.value);
+    pw.type = link ? "text" : "password";
+    if (link && inviteFrom(pw.value) && e.inputType === "insertFromPaste") F("lock-form").requestSubmit();
+  });
   return new Promise(resolve => {
     F("lock-form").addEventListener("submit", async e => {
       e.preventDefault();
@@ -5567,9 +5744,11 @@ async function unlockSite() {
         pw.select();
         return;
       }
-      pw.value = "";
+      pw.value = ""; pw.type = "password";
       lock.hidden = true; F("app").inert = false; document.documentElement.classList.remove("locked");
       resolve(store);
+      // Focus goes to the page's title, not the hidden box
+      setTimeout(() => { const t = F("vh-title"); if (t) t.focus({ preventScroll: true }); }, 0);
     });
   });
 }
@@ -5689,8 +5868,8 @@ function setupOpen() {
 }
 
 // What the page needs from the site: whether this is a Safari tab (whose saved data Safari can clear after 7 days
-// away; the home screen app keeps it), the home screen offer (in Settings and the banner), Lock this device (in
-// Settings), and Move progress to another device (in My record, Record tools)
+// away; the home screen app keeps it), the home screen offer (in Settings and the banner), Sign out on this device (in
+// Settings; lockDevice), and Move progress to another device (in My record, Record tools)
 const lockDevice = () => { forgetKeys(); location.reload(); };
 function addSiteControls() {
   S.site = { safariTab: () => isIos() && !installed() && !inAppName() && !/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent), addToHomeScreen, lockDevice,
@@ -5709,6 +5888,9 @@ function addSiteControls() {
   setupMove();
   takePendingMove();
   takePendingShare();
+  if (!storageWorks()) saveTrouble();
+  // Asks the browser to keep the record even when the phone runs low on space (some browsers grant it quietly)
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persisted().then(ok => ok || navigator.storage.persist()).catch(() => {}); } catch {}
 }
 
 // Shared from Android's share sheet: the service worker kept the PDF, photo or text on this device (in the "ts-share"
@@ -5718,7 +5900,8 @@ function addSiteControls() {
 let pendingShare = new URLSearchParams(location.search).get("share") === "1";
 if (pendingShare) { try { history.replaceState(null, "", location.pathname); } catch {} }
 async function takePendingShare() {
-  if (!pendingShare) return;
+  // Nothing shared this time: anything an earlier share left behind goes
+  if (!pendingShare) { try { caches.delete("ts-share").catch(() => {}); } catch {} return; }
   pendingShare = false;
   let file = null, text = "";
   try {
@@ -5731,7 +5914,14 @@ async function takePendingShare() {
   if (!file && !text.trim()) return toast("Nothing came through from the share. Try sharing it again.");
   // Wait for the trainings and the member's records, and for the PIN when the lock is on
   for (let i = 0; i < 150 && (!S.loaded || !S.rolesLoaded || pinLocked); i++) await new Promise(r => setTimeout(r, 200));
-  openShared(file, text);
+  // Asked first: another website could send a file here the same way the share sheet does
+  F("menu-title").textContent = "Read what you shared?";
+  F("menu-body").replaceChildren(
+    h("p", null, file ? `“${file.name}”. It's read on this device and stays here.` : "The text you shared. It's read on this device and stays here."),
+    h("div", { class: "move-acts" },
+      h("button", { class: "btn primary", type: "button", "data-key": "sh-yes", onclick: () => { closeBs("menu-sheet"); openShared(file, text); } }, "Read it"),
+      h("button", { class: "btn", type: "button", "data-key": "sh-no", onclick: () => closeBs("menu-sheet") }, "Not now")));
+  openBs("menu-sheet");
 }
 async function openShared(file, text) {
   const isPdf = !!file && (/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name));
@@ -5813,17 +6003,34 @@ async function readProgressLink(text) {
   return data.mine;
 }
 
-// Combined with this device's records the same way as Restore from backup (mergeMemberRecords in the page), except
-// that groups come from the device that sent the link. Certificate photos stay on the device they were added on.
-const mergeMine = (cur, inc) => mergeMemberRecords(cur, inc, { settings: "replace" });
+// Combined with this device's records the same way as Restore from backup (mergeMemberRecords in the page). The member
+// is asked first (anyone with the password could make such a link), and this device's groups stay unless the member
+// picks the other device's. Certificate photos stay on the device they were added on.
+const groupWords = st => st && Array.isArray(st.roles) ? [...st.roles.filter(g => GROUPS.includes(g)).map(g => AUD_LABEL[g]), ...(st.city === false ? [] : ["City-wide"])].join(", ") : "";
 async function bringInProgress(text) {
   const inc = await readProgressLink(text);
   const before = siteStore.readMine(MINE);
-  const { out, added } = mergeMine(before, inc);
-  if (JSON.stringify(out) === JSON.stringify(before)) { toast("Already up to date with your other device."); return; }
-  siteStore.writeMine(MINE, out);
-  toast(added ? `Brought in ${added} ${added === 1 ? "record" : "records"} from your other device.` : "Brought in your groups and records from your other device.",
-    { label: "Undo", fn: () => { siteStore.writeMine(MINE, before); toast("Undone."); } });
+  const keep = mergeMemberRecords(before, inc, { settings: "fill" }), take = mergeMemberRecords(before, inc, { settings: "replace" });
+  if (JSON.stringify(take.out) === JSON.stringify(before)) { toast("Already up to date with your other device."); return; }
+  const newGroups = JSON.stringify(keep.out._settings) !== JSON.stringify(take.out._settings);
+  const box = h("input", { type: "checkbox", id: "mv-groups", checked: !before._settings });
+  const apply = () => {
+    const { out, added } = newGroups && box.checked ? take : keep;
+    closeBs("menu-sheet");
+    if (JSON.stringify(out) === JSON.stringify(before)) { toast("Nothing new to bring in."); return; }
+    siteStore.writeMine(MINE, out);
+    toast(added ? `Brought in ${added} ${added === 1 ? "record" : "records"} from your other device.` : "Brought in your groups from your other device.",
+      { label: "Undo", fn: () => { siteStore.writeMine(MINE, before); toast("Undone."); } });
+  };
+  F("menu-title").textContent = "Bring in your progress?";
+  F("menu-body").replaceChildren(
+    h("p", null, take.added ? `The link from your other device has ${take.added} ${take.added === 1 ? "record" : "records"} to add here. Nothing here is replaced by an older copy.`
+      : "The link from your other device has its groups to add here."),
+    newGroups ? h("label", { class: "cbx bk-groups", for: "mv-groups" }, box, `Also use that device's groups (${groupWords(inc._settings) || "none"})`) : null,
+    h("div", { class: "move-acts" },
+      h("button", { class: "btn primary", type: "button", "data-key": "mv-yes", onclick: apply }, "Bring it in"),
+      h("button", { class: "btn", type: "button", "data-key": "mv-no", onclick: () => closeBs("menu-sheet") }, "Not now")));
+  openBs("menu-sheet");
 }
 
 // A link opened on this device is held until the password is in
@@ -5832,11 +6039,13 @@ if (location.hash.startsWith("#move=")) {
   pendingMove = location.hash;
   if (!inAppName()) cleanAddress();
 }
-function takePendingMove() {
+async function takePendingMove() {
   if (!pendingMove) return;
   const link = pendingMove;
   pendingMove = null;
-  setTimeout(() => bringInProgress(link).catch(() => toast("That progress link didn't work here. It may be an old one; send a new one.")), 300);
+  // Wait for the record and for the PIN when the lock is on
+  for (let i = 0; i < 150 && (!S.loaded || !S.rolesLoaded || pinLocked); i++) await new Promise(r => setTimeout(r, 200));
+  bringInProgress(link).catch(() => toast("That progress link didn't work here. It may be an old one; send a new one."));
 }
 
 let moveLink = "";
@@ -5864,8 +6073,11 @@ async function moveIn() {
   const err = F("move-err"), text = F("move-paste").value.trim();
   err.hidden = true;
   if (!text) { err.textContent = "Paste the link from your other device."; err.hidden = false; F("move-paste").focus(); return; }
-  try { await bringInProgress(text); closeBs("move-sheet"); }
-  catch { err.textContent = "That doesn't look like a Train Smart progress link, or it's an old one. Send a new one."; err.hidden = false; }
+  // Checked here first, so a bad link is said in this sheet; then this sheet makes way for the question
+  try { await readProgressLink(text); }
+  catch { err.textContent = "That doesn't look like a Train Smart progress link, or it's an old one. Send a new one."; err.hidden = false; return; }
+  closeBs("move-sheet");
+  bringInProgress(text).catch(() => toast("That progress link didn't work here. Send a new one."));
 }
 function setupMove() {
   F("move-close").addEventListener("click", () => closeBs("move-sheet"));
