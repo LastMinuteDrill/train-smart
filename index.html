@@ -655,6 +655,10 @@ svg{flex:none}
 .install-h{margin:0 0 8px; font-size:16px; font-weight:800}
 .install-steps{margin:0; padding-left:22px; display:grid; gap:8px; color:var(--ink)}
 .bs-body .install-note{margin-top:10px; font-size:14px}
+.install-first{margin:0 0 12px; padding:12px; border-radius:12px; background:var(--warn-bg); border:1px solid var(--warn-line); display:grid; gap:10px}
+.install-first p{margin:0; color:var(--ink)}
+.install-first .btn{justify-self:start}
+.lock-ios{margin:0; padding:10px 12px; border-radius:10px; background:var(--warn-bg); border:1px solid var(--warn-line); color:var(--ink); font-size:14.5px; line-height:1.45}
 </style>
 <script>
 // Apply this device's saved theme before the page draws, so there's no flash
@@ -668,6 +672,8 @@ try { var t = JSON.parse(localStorage.getItem("ts:theme") || '"auto"'); if (t ==
     <p class="hint">Tap the invite link you were sent, or paste it here. You only need to do this once on this phone or computer.</p>
     <label class="lock-lbl" for="lock-pw">Invite link or password</label>
     <input id="lock-pw" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <p class="lock-ios" id="lock-ios" hidden><b>On iPhone the home screen app starts separate from Safari,</b> so it asks for your link once. Copy your invite link (press and hold it in the message you were sent, then tap Copy), then tap <b>Paste my link</b>.</p>
+    <button class="btn" id="lock-paste" type="button" hidden>Paste my link</button>
     <label class="lock-cbx"><input id="lock-remember" type="checkbox" checked> Remember on this device</label>
     <p class="form-err" id="lock-err" role="alert" hidden></p>
     <button class="btn primary big" id="lock-btn" type="submit">Unlock</button>
@@ -990,13 +996,18 @@ try { var t = JSON.parse(localStorage.getItem("ts:theme") || '"auto"'); if (t ==
       <p>Train Smart then opens like an app, straight from its icon.</p>
       <section id="install-ios">
         <h3 class="install-h">iPhone or iPad</h3>
+        <div class="install-first">
+          <p><b>First, copy your invite link.</b> On iPhone the home screen app starts separate from Safari, so it asks for your link once.</p>
+          <button class="btn" id="install-copy" type="button" hidden>Copy my invite link</button>
+          <p id="install-nolink" hidden>You opened Train Smart with the password here, so you'll type the password once more there.</p>
+        </div>
         <ol class="install-steps">
           <li>Tap the <b>Share</b> button (the square with an arrow pointing up).</li>
           <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
           <li>Tap <b>Add</b>.</li>
+          <li>Open Train Smart from your home screen and tap <b>Paste my link</b>.</li>
         </ol>
-        <p class="install-note">The home screen app keeps its own sign-in. The first time you open it, paste your invite link (or type the password) once more.</p>
-        <p class="install-note">It also keeps its own record, separate from Safari. If you've used Train Smart in Safari, back up first (My record, Record tools, Download backup), then open the app and use Restore from backup.</p>
+        <p class="install-note">What you saved here in Safari stays in Safari. To bring it along, back up first (My record, Record tools, Download backup), then use Restore your backup in the home screen app.</p>
       </section>
       <section id="install-android">
         <h3 class="install-h">Android</h3>
@@ -1116,7 +1127,7 @@ const S = {
   sel: null, autoSel: false, listScroll: 0, pushed: false, ignorePop: false,
   items: [], progress: {}, loaded: false, offline: false, dbErr: null,
   db: null, user: null, sample: null, assets: null, downloads: null, uid: null, canWrite: true,
-  roles: null, city: true, rolesLoaded: false, added: new Set(), removed: new Set(), setupPick: new Set(["city"]),
+  roles: null, city: true, started: "", firstTime: false, rolesLoaded: false, added: new Set(), removed: new Set(), setupPick: new Set(["city"]),
   busy: new Set(), emailOpen: new Set(),
   formPdfs: [], viewerBlob: null, viewerFocus: null, viewerName: "",
   editing: null, touched: new Set(), dirty: false, lastFocus: null, sheetFocus: null,
@@ -1399,6 +1410,10 @@ function memoDeadline(it) {
 // Where a completion came from, strongest first: the EMS Registry (the official record), then a certificate (read here,
 // or kept with it), then the member's own checkmark. Older checkmarks don't say.
 const sourceOf = p => !p ? null : p.via === "registry" ? "registry" : p.via === "certificate" ? "certificate" : p.via === "hand" ? "hand" : p.proof ? "certificate" : null;
+// The member's first day in Train Smart, saved with their groups when they first pick them (S.started). Members who
+// started before this was kept have none, so nothing changes for them.
+const START_GRACE_DAYS = 90;
+const beforeStart = it => { const s = parseISO(S.started), d = parseISO(it.due); return !!(s && d && d < shiftDays(s, -START_GRACE_DAYS)); };
 function stateOf(it) {
   const p = S.progress[it.id];
   if (p && p.done) {
@@ -1411,6 +1426,9 @@ function stateOf(it) {
   if (ex) return { key: "expired", label: ex };
   const newer = replacedBy(it);
   if (newer) return { key: "expired", label: `Replaced by the ${trainingMonth(newer) || "newer one"}` };
+  // A member who just started isn't shown months of old CMEs as overdue: anything due more than 90 days before their
+  // first day in Train Smart is listed with the expired ones instead (it can still be opened and marked done)
+  if (beforeStart(it)) return { key: "expired", early: true, label: "From before you started Train Smart" };
   const n = daysUntil(it.due);
   if (n == null) return { key: "open", label: "No deadline" };
   if (n < 0) return { key: "late", label: "Overdue · " + memoDeadline(it) };
@@ -1511,12 +1529,14 @@ function computeView() {
   const base = S.items.filter(it => inScope(it) && !isDone(it) && catOk(it) && matches(it, terms)).map(it => ({ it, st: stateOf(it) }));
   const counts = { all: 0, late: 0, soon: 0, expired: 0 };
   for (const { st } of base) {
+    if (st.early) continue;
     if (st.key === "expired") counts.expired++;
     else { counts.all++; if (st.key === "late") counts.late++; if (st.key === "soon") counts.soon++; }
   }
   const rows = base.filter(({ st }) =>
     S.status === "expired" ? st.key === "expired" :
-    st.key === "expired" ? S.showExpired && S.status === "all" :
+    // From before the member started: always at the end of the full list, not counted as overdue or to do
+    st.key === "expired" ? (st.early || S.showExpired) && S.status === "all" :
     S.status === "late" ? st.key === "late" :
     S.status === "soon" ? st.key === "soon" : true);
   rows.sort(cmp);
@@ -1533,8 +1553,9 @@ function computeView() {
 function sectionize(rows) {
   if (S.sort !== "due") return [{ label: null, rows }];
   const now = parseISO(today()), cur = now.getFullYear() * 12 + now.getMonth();
-  const late = [], thisMonth = [], months = new Map(), none = [], expired = [];
+  const late = [], thisMonth = [], months = new Map(), none = [], early = [], expired = [];
   for (const r of rows) {
+    if (r.st.early) { early.push(r); continue; }
     if (r.st.key === "expired") { expired.push(r); continue; }
     const d = parseISO(r.it.due);
     if (!d) { none.push(r); continue; }
@@ -1550,6 +1571,7 @@ function sectionize(rows) {
   // Latest first turns the dated sections around; no deadline and expired stay at the end
   if (S.dirs.mine === "desc") out.reverse();
   if (none.length) out.push({ label: "No deadline", rows: none });
+  if (early.length) out.push({ label: "From before you started Train Smart", rows: early });
   if (expired.length) out.push({ label: "Expired or retired", rows: expired });
   return out;
 }
@@ -1688,7 +1710,7 @@ function welcomeCard(mode) {
   if (mode === "report") return h("div", { class: "welcome-card" }, brand,
     h("h1", { id: "welcome-title", tabindex: "-1" }, "Start with your status report"),
     h("p", null, "It picks your groups (EMT: All EMS. Paramedic: All EMS and ALS) and checks off the courses you've done."),
-    h("button", { class: "btn primary big", type: "button", "data-key": "setup-reg", onclick: openRegistry }, icoUpload(), "Read my status report"),
+    h("button", { class: "btn primary big", type: "button", "data-key": "setup-reg", onclick: pickStatusReport }, icoUpload(), "Read my status report"),
     h("a", { class: "btn big", href: REGISTRY_URL, target: "_blank", rel: "noopener noreferrer", "data-key": "setup-registry" },
       "Get it from the EMS Registry", icoOut(), h("span", { class: "sr" }, " (opens in a new tab)")),
     h("details", { class: "reg-paste welcome-how" },
@@ -1829,11 +1851,11 @@ function row(it, st, terms) {
     title: S.uid ? "Mark done" : "Reload the page to tick off trainings",
     onclick: () => certFirst(it) ? askHowDone(it) : toggleDone(it.id, true),
   }, h("span", { class: "cb-box" }, icoCheck()), h("span", { "aria-hidden": "true" }, "Mark done"));
-  const go = link && !expired ? h("a", { class: "btn primary go", href: link, target: "_blank", rel: "noopener noreferrer", "data-key": "o:" + it.id,
+  const go = link && (!expired || st.early) ? h("a", { class: "btn primary go", href: link, target: "_blank", rel: "noopener noreferrer", "data-key": "o:" + it.id,
         onclick: () => { if (isNew(it)) { markSeen(it.id); setTimeout(renderAll, 0); } } }, "Open training", icoOut(), h("span", { class: "sr" }, " (opens in a new tab)"))
     : h("button", { class: "btn go", type: "button", "data-key": "v:" + it.id, onclick: () => openDetail(it.id) }, "View details", icoArrow());
   const fresh = isNew(it);
-  return h("article", { class: "row" + (expired ? " is-expired" : "") + (fresh ? " is-new" : "") + (wide() && S.sel === it.id ? " is-sel" : "") },
+  return h("article", { class: "row" + (expired && !st.early ? " is-expired" : "") + (fresh ? " is-new" : "") + (wide() && S.sel === it.id ? " is-sel" : "") },
     h("div", { class: "row-main" },
       fresh ? h("span", { class: "new-pill" }, "New") : null,
       h("button", { class: "row-title", type: "button", "data-key": "t:" + it.id, onclick: () => openDetail(it.id) }, fresh ? h("span", { class: "sr" }, "New: ") : null, hl(name, terms)),
@@ -1887,7 +1909,7 @@ function eyebrowOf(it, st) {
   const d = parseISO(it.due);
   const cme = /train\.org/i.test(it.link || "") || /\bCME\b/.test(it.summary || "");
   const first = cme && d && it.required ? `${MON[d.getMonth()]} ${d.getFullYear()} CME` : (it.category || "Training");
-  const second = st.key === "expired" ? (/^Replaced/.test(st.label) ? "Replaced" : "Expired") : it.required ? "Required" : "Optional";
+  const second = st.early ? "Before you started" : st.key === "expired" ? (/^Replaced/.test(st.label) ? "Replaced" : "Expired") : it.required ? "Required" : "Optional";
   return `${first} · ${second}`;
 }
 
@@ -1900,7 +1922,7 @@ function renderDetail() {
   }
   const keepScroll = pane.scrollTop;
   const terms = termsOf();
-  const st = stateOf(it), done = st.key === "done", expired = st.key === "expired";
+  const st = stateOf(it), done = st.key === "done", expired = st.key === "expired" && !st.early;
   const p = S.progress[it.id] || {};
   const link = safeUrl(it.link), pdfs = pdfsOf(it);
 
@@ -2292,10 +2314,12 @@ async function copyText(text, done) {
 }
 
 /* ---------- my groups and My trainings choices ---------- */
-// Saved privately at data/users/<id>/_settings: { roles, city, added, removed }
+// Saved privately at data/users/<id>/_settings: { roles, city, added, removed, started (the member's first day) }
 let settingsWrite = Promise.resolve();
 function saveSettings() {
-  const data = { roles: (S.roles || []).slice(), city: S.city, added: [...S.added], removed: [...S.removed] };
+  // A member's first save of their groups (no settings yet on load) marks their first day in Train Smart
+  if (S.firstTime && !S.started) S.started = today();
+  const data = { roles: (S.roles || []).slice(), city: S.city, added: [...S.added], removed: [...S.removed], ...(S.started ? { started: S.started } : {}) };
   settingsWrite = settingsWrite.then(() => retry(() => S.db.collection("data/users/" + S.uid).doc("_settings").set(data)))
     .catch(e => toast(errText(e, "Your My trainings change wasn't saved.")));
   return settingsWrite;
@@ -2742,8 +2766,24 @@ async function pdfText(file) {
   }
   const inOrder = pages.map(items => items.map(i => i.str).join(" ")).join(" ");
   if (parseStatusReport(inOrder).length) return inOrder;
-  // Some PDFs store text out of reading order: put it back top to bottom, left to right as shown
+  // Some PDFs store text out of reading order. A status report is then read line by line as it looks (what copying
+  // the text out of the PDF gives): one saved on an iPhone can print a row's title a little below its date and hours,
+  // and sorting by exact height alone would give each title the next row's date.
+  const lines = pages.map(textLines).join("\n");
+  if (parseStatusReport(lines).length) return lines;
+  // Anything else (certificates, a PDF stored turned sideways like 2026 FEMA certificates): top to bottom, left to right
   return pages.map(items => [...items].sort((a, b) => (a.at[5] - b.at[5]) || (a.at[4] - b.at[4])).map(i => i.str).join(" ")).join(" ");
+}
+// The text of a page as the eye reads it: pieces less than half a letter's height apart up or down are one line,
+// read left to right, and the lines go top to bottom
+function textLines(items) {
+  const lines = [];
+  for (const i of [...items].filter(i => i.str.trim()).sort((a, b) => a.at[5] - b.at[5])) {
+    const size = Math.hypot(i.at[2], i.at[3]) || 10, last = lines[lines.length - 1];
+    if (last && Math.abs(i.at[5] - last.y) <= size / 2) last.items.push(i);
+    else lines.push({ y: i.at[5], items: [i] });
+  }
+  return lines.map(l => l.items.sort((a, b) => a.at[4] - b.at[4]).map(i => i.str).join(" ")).join("\n");
 }
 // Each Registry course goes to one training. A completion fits an assignment best inside its window: from when it went
 // out (or 60 days before it was due, whichever is earlier) to its due date. A late completion fits next, by how late.
@@ -2815,6 +2855,22 @@ function openRegistry() {
   regPickStep();
   openBs("reg-sheet");
 }
+// The welcome screen already shows the steps, so its button goes straight to choosing the PDF; the sheet opens with
+// what was found, or (if nothing was) with the steps, the paste box open and what went wrong
+function pickStatusReport() {
+  if (!S.uid || !S.db) return;
+  const fileIn = h("input", { type: "file", accept: "application/pdf,.pdf", hidden: true });
+  fileIn.addEventListener("cancel", () => fileIn.remove());
+  fileIn.addEventListener("change", () => {
+    const f = fileIn.files[0]; fileIn.remove();
+    if (!f) return;
+    regFocus = document.activeElement;
+    F("reg-title").textContent = "Check off from your status report";
+    regPickStep(); openBs("reg-sheet");
+    readStatusReport(() => pdfText(f));
+  });
+  document.body.append(fileIn); fileIn.click();
+}
 function closeRegistry() {
   closeBs("reg-sheet");
   if (regFocus && regFocus.isConnected) regFocus.focus();
@@ -2830,7 +2886,7 @@ function regPickStep(msg) {
       h("li", null, "Open ", h("b", null, "Con-Ed"), " and tap ", h("b", null, "Print Status Report"), ". Save it as a PDF.", reportDatesWords() ? " " + reportDatesWords() : ""),
       h("li", null, "Come back here and choose that PDF.")),
     h("div", { class: "reg-pick" }, h("label", { class: "btn primary" }, "Choose the PDF", fileIn)),
-    h("details", { class: "reg-paste" },
+    h("details", { class: "reg-paste", ...(msg ? { open: "" } : {}) },
       h("summary", null, "Or paste the Con-Ed page"),
       h("div", { class: "reg-paste-body" }, paste,
         h("div", null, h("button", { class: "btn", type: "button", onclick: () => readStatusReport(async () => paste.value) }, "Read it")))),
@@ -2843,7 +2899,7 @@ async function readStatusReport(getText) {
   let rows = [], cert = null;
   try { const text = await getText(); rows = parseStatusReport(text); cert = parseRegistryCert(text); }
   catch (e) { return regPickStep(e && e.libLoad ? "The reader needs a connection the first time it's used. Connect, then try again." : "That file couldn't be read. Make sure it's the PDF of your status report."); }
-  if (!rows.length && !cert) return regPickStep("No courses were found. Use the status report from the Con-Ed tab, or paste the whole Con-Ed page.");
+  if (!rows.length && !cert) return regPickStep("No courses were found in that file. Try pasting instead: open the PDF or the Con-Ed page, select all, copy, and paste it in the box above.");
   regReviewStep(rows, cert);
 }
 function regReviewStep(rows, cert) {
@@ -4708,7 +4764,7 @@ function myRecords() {
     if (Object.keys(d).length) out[id] = d;
   }
   Object.assign(out, JSON.parse(JSON.stringify({ ...S.extras, ...S.certs, ...S.meta })));
-  if (S.roles !== null) out._settings = { roles: (S.roles || []).slice(), city: S.city, added: [...S.added], removed: [...S.removed] };
+  if (S.roles !== null) out._settings = { roles: (S.roles || []).slice(), city: S.city, added: [...S.added], removed: [...S.removed], ...(S.started ? { started: S.started } : {}) };
   return out;
 }
 function recordJson(raw, files) {
@@ -4936,7 +4992,7 @@ function mergeMemberRecords(cur, inc, { settings = "fill" } = {}) {
   }
   const s = inc && inc._settings, ids = v => Array.isArray(v) ? v.filter(x => typeof x === "string" && x.length <= 120).slice(0, 1000) : [];
   if (s && typeof s === "object" && Array.isArray(s.roles) && (settings === "replace" || !cur._settings))
-    out._settings = { roles: s.roles.filter(x => GROUPS.includes(x)), city: s.city !== false, added: ids(s.added), removed: ids(s.removed) };
+    out._settings = { roles: s.roles.filter(x => GROUPS.includes(x)), city: s.city !== false, added: ids(s.added), removed: ids(s.removed), ...(parseISO(s.started) ? { started: s.started } : {}) };
   return { out, added };
 }
 // groups: also take the groups and My trainings choices saved in the backup (a new phone, or when asked)
@@ -4985,7 +5041,7 @@ async function restoreBackup(file, { groups = false } = {}) {
 // What this device has, for merging
 function myRecordsForMerge() {
   const out = JSON.parse(JSON.stringify({ ...S.progress, ...S.extras, ...S.certs, ...S.meta }));
-  if (S.roles !== null) out._settings = { roles: (S.roles || []).slice(), city: S.city, added: [...S.added], removed: [...S.removed] };
+  if (S.roles !== null) out._settings = { roles: (S.roles || []).slice(), city: S.city, added: [...S.added], removed: [...S.removed], ...(S.started ? { started: S.started } : {}) };
   return out;
 }
 
@@ -5744,6 +5800,18 @@ async function unlockSite() {
   // Ask for the invite link or the password
   const lock = F("lock"), pw = F("lock-pw"), err = F("lock-err"), btn = F("lock-btn");
   lock.hidden = false; F("app").inert = true; document.documentElement.classList.add("locked");
+  // In an iPhone home screen app (its own storage, apart from Safari): say why it asks, and offer to paste the link
+  if (installed() && isIos()) F("lock-ios").hidden = false;
+  if (navigator.clipboard && navigator.clipboard.readText) {
+    F("lock-paste").hidden = false;
+    F("lock-paste").addEventListener("click", async () => {
+      let text = "";
+      try { text = await navigator.clipboard.readText(); } catch {}
+      if (!inviteFrom(text)) { err.textContent = "There's no invite link to paste. Copy your link first (press and hold it in the message, tap Copy), then try again."; err.hidden = false; pw.focus(); return; }
+      pw.value = text.trim(); pw.type = "text";
+      F("lock-form").requestSubmit();
+    });
+  }
   if (inviteBad) { err.textContent = "That invite link doesn't work anymore, or part of it is missing. Ask for a new one."; err.hidden = false; }
   else if (inviteCut) { err.textContent = "Part of your invite link is missing. Go back to the message, press and hold the link, tap Copy, and paste it here."; err.hidden = false; }
   else if (lockedAgain) { err.textContent = "Train Smart was locked on this phone. Tap your invite link again, or paste it here (or type the password)."; err.hidden = false; }
@@ -5812,6 +5880,11 @@ async function addToHomeScreen() {
   }
   F("install-ios").hidden = !isIos();
   F("install-android").hidden = isIos();
+  // The member's own invite link, which this device remembers, to paste into the home screen app
+  const saved = remembered(SITE_KEY), inv = saved && inviteFrom(saved.inv || "");
+  F("install-copy").hidden = !inv;
+  F("install-nolink").hidden = !!inv;
+  F("install-copy").onclick = inv ? () => copyText(location.origin + location.pathname + "?invite=" + inv.id + "." + inv.secret, "Link copied. Now add Train Smart to your home screen, open it, and tap Paste my link.") : null;
   openBs("install-sheet");
 }
 function closeInstall() {
@@ -6170,7 +6243,12 @@ async function init() {
         S.roles = Array.isArray(settings.roles) ? settings.roles.filter(x => GROUPS.includes(x)) : [];
         S.city = settings.city !== false;
         S.added = new Set(ids(settings.added)); S.removed = new Set(ids(settings.removed));
-      } else if (!snap.metadata.hasPendingWrites) { S.roles = null; S.city = true; S.added = new Set(); S.removed = new Set(); }
+        S.started = parseISO(settings.started) ? settings.started : ""; S.firstTime = false;
+      } else if (!snap.metadata.hasPendingWrites) {
+        S.roles = null; S.city = true; S.added = new Set(); S.removed = new Set(); S.started = "";
+        // Nothing saved yet at all: a new member (a record restored from a backup brings its own groups instead)
+        S.firstTime = !Object.keys(p).length && !Object.keys(x).length && !Object.keys(c).length;
+      }
       S.rolesLoaded = true;
       renderAll();
     }, () => { S.rolesLoaded = true; renderAll(); });
