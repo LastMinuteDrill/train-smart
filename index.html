@@ -5709,9 +5709,11 @@ function inAppNotice() {
   const ios = isIos(), b = ios ? "Safari" : "Chrome";
   F("inapp-title").textContent = `Open this in ${b}`;
   F("inapp-why").textContent = `You're in ${app}'s own browser. It can lose what you save, and it can't add Train Smart to your home screen.`;
-  // The menu is ⋯ at the top right in all three (checked in Messenger on Android, Oct 26); its wording varies
-  F("inapp-menu").textContent = "⋯";
-  F("inapp-item").textContent = ios ? "Open in external browser" : "Open in browser";
+  // The menu is at the top right: ⋯ in Messenger (checked on Android, Oct 26) and on iPhone, ⋮ in Facebook on Android
+  // with "Open in external browser" (checked Nov 7); its wording varies
+  const fbAndroid = app === "Facebook" && !ios;
+  F("inapp-menu").textContent = fbAndroid ? "⋮" : "⋯";
+  F("inapp-item").textContent = ios || fbAndroid ? "Open in external browser" : "Open in browser";
   F("inapp-or").textContent = ios ? "(or Open in Safari)" : "(or Open in Chrome)";
   F("inapp-carry").hidden = !pendingInvite;
   F("inapp-nolink").hidden = !!pendingInvite;
@@ -5838,7 +5840,10 @@ async function unlockSite() {
       } catch {}
       btn.disabled = false; btn.textContent = "Unlock";
       if (!store) {
-        err.textContent = invite ? "That invite link doesn't work anymore. Ask for a new one." : "That password didn't work. Check it and try again."; err.hidden = false;
+        err.textContent = invite ? "That invite link doesn't work anymore. Ask for a new one."
+          // The address without its invite part, say when a space or line break split the link in a message
+          : /^\s*(https?:|lastminutedrill)/i.test(pw.value) ? "That's the Train Smart address without the invite code at the end. Copy the whole link, code and all, and paste it here."
+          : "That password didn't work. Check it and try again."; err.hidden = false;
         pw.select();
         return;
       }
