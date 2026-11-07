@@ -669,8 +669,8 @@ try { var t = JSON.parse(localStorage.getItem("ts:theme") || '"auto"'); if (t ==
   <form class="lock-card" id="lock-form" novalidate>
     <p class="brand">Train <span class="swipe">Smart</span></p>
     <h1>Open Train Smart</h1>
-    <p class="hint">Tap the invite link you were sent, or paste it here. You only need to do this once on this phone or computer.</p>
-    <label class="lock-lbl" for="lock-pw">Invite link or password</label>
+    <p class="hint">Tap the invite link you were sent, paste it here, or type the four-word code that came with it. You only need to do this once on this phone or computer.</p>
+    <label class="lock-lbl" for="lock-pw">Invite link, code or password</label>
     <input id="lock-pw" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
     <p class="lock-ios" id="lock-ios" hidden><b>On iPhone the home screen app starts separate from Safari,</b> so it asks for your link once. Copy your invite link (press and hold it in the message you were sent, then tap Copy), then tap <b>Paste my link</b>.</p>
     <button class="btn" id="lock-paste" type="button" hidden>Paste my link</button>
@@ -694,7 +694,7 @@ try { var t = JSON.parse(localStorage.getItem("ts:theme") || '"auto"'); if (t ==
       <li>Tap <b id="inapp-item">Open in browser</b> <span id="inapp-or">(or Open in Chrome)</span>.</li>
     </ol>
     <p class="hint" id="inapp-carry">Your invite link comes along, so it opens there with nothing to type.</p>
-    <p class="hint" id="inapp-nolink" hidden>If it asks for your invite link there, go back to the message, press and hold the link, tap Copy, and paste it in.</p>
+    <p class="hint" id="inapp-nolink" hidden>If it asks for your invite link there, go back to the message, press and hold the link, tap Copy, and paste it in. Or type the four-word code that came with your link.</p>
     <button class="btn" id="inapp-copy" type="button">Copy the link instead</button>
     <input id="inapp-link" type="text" readonly hidden aria-label="Train Smart link">
     <p class="hint" id="inapp-copied" role="status" hidden></p>
@@ -5736,6 +5736,17 @@ function inAppNotice() {
     }, { once: true });
   });
 }
+// A typed four-word code: the same slow step as the password (raw), then a tag made from it finds that invite's
+// locked copy (codes, made by build-site.js), which holds the invite itself
+async function inviteFromCode(box, raw) {
+  if (!box.codes) return null;
+  const sha = async label => new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array([...new TextEncoder().encode(label), ...raw])));
+  const tag = Array.from(await sha("ts-code-tag:"), b => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+  const c = box.codes[tag];
+  if (!c) return null;
+  try { return inviteFrom(new TextDecoder().decode(await openWith(await aesKey(await sha("ts-code-key:")), fromB64(c.iv), fromB64(c.ct)))); }
+  catch { return null; }
+}
 async function openInvite(box, invite) {
   const slot = box.inv && box.inv[invite.id];
   if (!slot) throw new Error("no such invite");
@@ -5809,7 +5820,7 @@ async function unlockSite() {
     F("lock-paste").addEventListener("click", async () => {
       let text = "";
       try { text = await navigator.clipboard.readText(); } catch {}
-      if (!inviteFrom(text)) { err.textContent = "There's no invite link to paste. Copy your link first (press and hold it in the message, tap Copy), then try again."; err.hidden = false; pw.focus(); return; }
+      if (!inviteFrom(text)) { err.textContent = "There's no invite link to paste. Copy your link first (press and hold it in the message, tap Copy), or type the four-word code that came with it."; err.hidden = false; pw.focus(); return; }
       pw.value = text.trim(); pw.type = "text";
       F("lock-form").requestSubmit();
     });
@@ -5828,22 +5839,24 @@ async function unlockSite() {
     F("lock-form").addEventListener("submit", async e => {
       e.preventDefault();
       if (btn.disabled) return;
-      if (!pw.value.trim()) { err.textContent = "Paste your invite link, or type the password."; err.hidden = false; pw.focus(); return; }
+      if (!pw.value.trim()) { err.textContent = "Paste your invite link, or type your code or the password."; err.hidden = false; pw.focus(); return; }
       err.hidden = true; btn.disabled = true; btn.textContent = "Unlocking…";
-      const keep = F("lock-remember").checked, invite = inviteFrom(pw.value);
-      let store = null;
+      const keep = F("lock-remember").checked, link = inviteFrom(pw.value);
+      let store = null, invite = link;
       try {
         const pwRaw = invite ? null : await deriveRaw(pw.value, box.salt, box.iter);
+        // Typed words: an invite's four-word code, or else the password
+        if (!invite) invite = await inviteFromCode(box, pwRaw);
         const raw = invite ? await openInvite(box, invite) : await fromPwKey(pwRaw);
         store = await start(await aesKey(raw));
         if (keep || invite) remember(SITE_KEY, kid, raw, invite ? inviteHow(invite) : pwHow(pwRaw));
       } catch {}
       btn.disabled = false; btn.textContent = "Unlock";
       if (!store) {
-        err.textContent = invite ? "That invite link doesn't work anymore. Ask for a new one."
+        err.textContent = link ? "That invite link doesn't work anymore. Ask for a new one."
           // The address without its invite part, say when a space or line break split the link in a message
-          : /^\s*(https?:|lastminutedrill)/i.test(pw.value) ? "That's the Train Smart address without the invite code at the end. Copy the whole link, code and all, and paste it here."
-          : "That password didn't work. Check it and try again."; err.hidden = false;
+          : /^\s*(https?:|lastminutedrill)/i.test(pw.value) ? "That's the Train Smart address without the invite part at the end. Copy the whole link and paste it here, or type your four-word code."
+          : "That code or password didn't work. Check it and try again."; err.hidden = false;
         pw.select();
         return;
       }
